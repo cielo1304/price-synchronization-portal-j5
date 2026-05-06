@@ -48,7 +48,9 @@ type PositionInput = {
   draft?: boolean;
 };
 
-const ceilTo = (n: number, step: number) => Math.ceil(n / step) * step;
+// Округление к ближайшему шагу (как MROUND в Google Sheets).
+// 16304.7 → 16300, 16325 → 16350.
+const roundToStep = (n: number, step: number) => Math.round(n / step) * step;
 
 export function buildPosition(input: PositionInput): Position {
   const {
@@ -80,7 +82,7 @@ export function buildPosition(input: PositionInput): Position {
   const hasParsed = validSources.length > 0;
   const purchase = hasParsed ? Math.max(...validSources.map((s) => s.price)) : 0;
   const partRetail = hasParsed
-    ? ceilTo(purchase * (1 + markupPct / 100), roundStep)
+    ? roundToStep(purchase * (1 + markupPct / 100), roundStep)
     : 0;
   const final = partRetail + laborPrice;
 
@@ -152,7 +154,7 @@ export function buildPosition(input: PositionInput): Position {
     stages.push({
       id: "part_retail",
       title: "Цена запчасти",
-      subtitle: `Округляется вверх до ${roundStep} ₽`,
+      subtitle: `Округляется к ближайшим ${roundStep} ₽`,
       cells: [
         {
           address: `${id}.part.retail_price`,
@@ -160,7 +162,7 @@ export function buildPosition(input: PositionInput): Position {
           kind: "formula",
           value: partRetail || null,
           unit: "₽",
-          formula: `CEIL(закупка × (1 + наценка/100), ${roundStep})`,
+          formula: `MROUND(закупка × (1 + наценка/100); ${roundStep})`,
           dependsOn: [`${id}.part.purchase_price`, `${id}.part.markup_pct`],
           sheetRef: partRetailSheetRef,
           note: partRetailSheetRef
@@ -447,7 +449,7 @@ export const CATALOG: Position[] = [
     draft: true,
   }),
 
-  // iPhone 16 — Переклей разбитого стекла
+  // iPhone 16 — ��ереклей разбитого стекла
   buildPosition({
     id: "iphone16.glass_reglue",
     device: "iPhone 16",
