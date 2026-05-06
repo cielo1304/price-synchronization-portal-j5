@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { ChevronDown, X, Check, Filter } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
+import { deviceSortKey } from "@/lib/portal-catalog";
 import { cn } from "@/lib/utils";
 
 export type CatalogFilters = {
@@ -19,11 +20,17 @@ export const EMPTY_FILTERS: CatalogFilters = {
 
 // ── Утилиты бакетирования ────────────────────────────────────────────────
 
-/** Сводим точное название модели к поколению: «iPhone 16 Pro Max» → «iPhone 16» */
+/**
+ * Сводим точное название модели к поколению.
+ * «iPhone 16 Pro Max» → «iPhone 16»
+ * «iPhone 16E»        → «iPhone 16»  (entry-level живёт внутри 16-го поколения)
+ * «iPhone XS Max»     → «iPhone X-серия»
+ * «iPhone SE 2020»    → «iPhone SE»
+ */
 export function getGeneration(device: string): string {
   if (/iPhone\s+SE/i.test(device)) return "iPhone SE";
   if (/iPhone\s+X(?!\d)/i.test(device)) return "iPhone X-серия";
-  const m = device.match(/iPhone\s+(\d+E?)/i);
+  const m = device.match(/iPhone\s+(\d+)/i);
   return m ? `iPhone ${m[1]}` : device;
 }
 
@@ -133,7 +140,9 @@ export function CatalogFiltersBar({ positions, filters, onChange }: Props) {
     [positions],
   );
 
-  // Модели — учитываем выбранные поколения, чтобы список был релевантным
+  // Модели — учитываем выбранные поколения, чтобы список был релевантным.
+  // Сортировка та же, что в левом каталоге услуг: новые поколения сверху,
+  // внутри поколения — Pro Max → Pro → Air → Plus → base → 16E → mini.
   const modelOptions = useMemo(() => {
     const filtered =
       filters.generations.size > 0
@@ -141,9 +150,13 @@ export function CatalogFiltersBar({ positions, filters, onChange }: Props) {
             filters.generations.has(getGeneration(p.device)),
           )
         : positions;
-    return countByKey(filtered, (p) => p.device).sort((a, b) =>
-      a.value.localeCompare(b.value, "ru"),
-    );
+    return countByKey(filtered, (p) => p.device).sort((a, b) => {
+      const [ma, ta, na] = deviceSortKey(a.value);
+      const [mb, tb, nb] = deviceSortKey(b.value);
+      if (ma !== mb) return mb - ma;
+      if (ta !== tb) return ta - tb;
+      return na.localeCompare(nb, "ru");
+    });
   }, [positions, filters.generations]);
 
   const serviceOptions = useMemo(() => {

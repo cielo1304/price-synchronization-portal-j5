@@ -473,14 +473,14 @@ export type CatalogGroup = {
   positions: PositionStub[];
 };
 
-// Сортировка моделей iPhone в порядке выхода — от новых к старым.
+// Сортировка моделей iPhone в порядке выхода — от новых к ��тарым.
 // Группы по году релиза:
 //   17 (2025) → 16 (2024) → 15 (2023) → 14 (2022) → 13 (2021) → 12 (2020) →
 //   11 (2019) → XS/XS Max/XR (2018) → X (2017) → 8/8+ (2017) → 7/7+ (2016) →
 //   SE 2016 → 6S/6S+ (2015) → 6/6+ (2014) → 5S/5C (2013) → 5 (2012).
 // SE 2/SE 3 ставим рядом со своим поколением (11 и 13).
 // Внутри поколения: Pro Max → Pro → Air → Plus → base → 16E → mini.
-function deviceSortKey(device: string): [number, number, string] {
+export function deviceSortKey(device: string): [number, number, string] {
   // SE — отдельная ветка, привязка к году выпуска.
   if (/iPhone\s+SE/i.test(device)) {
     const yearMatch = device.match(/(\d{4})/);
