@@ -3,12 +3,14 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Menu, X } from "lucide-react";
 import type { Cell, Position } from "@/lib/portal-types";
+import { compute, getQuickFinal } from "@/lib/portal-catalog";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
 import { PipelineStage } from "./pipeline-stage";
 import { OutputTargets } from "./output-targets";
 import { CellInspector } from "./cell-inspector";
 import { CatalogNav } from "./catalog-nav";
+import { VariantSwitcher } from "./variant-switcher";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -20,6 +22,9 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
   const [selectedPositionId, setSelectedPositionId] = useState<string>(
     defaultPositionId ?? catalog[0]?.id ?? "",
   );
+  const [variantByPosition, setVariantByPosition] = useState<
+    Record<string, string>
+  >({});
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const position = useMemo(
@@ -27,9 +32,15 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
     [catalog, selectedPositionId],
   );
 
+  const selectedVariantId = variantByPosition[position.id];
+  const composed = useMemo(
+    () => compute(position, selectedVariantId),
+    [position, selectedVariantId],
+  );
+
   const allCells = useMemo(
-    () => position.stages.flatMap((s) => s.cells),
-    [position],
+    () => composed.stages.flatMap((s) => s.cells),
+    [composed],
   );
 
   const defaultAddress =
@@ -39,15 +50,22 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
     defaultAddress,
   );
 
-  // При смене позиции — переключаем выбранную ячейку на её итог.
   const handleSelectPosition = (id: string) => {
     setSelectedPositionId(id);
     const next = catalog.find((p) => p.id === id);
-    const finalAddr =
-      next?.stages.flatMap((s) => s.cells).find((c) => c.isFinal)?.address ??
-      null;
-    setSelectedAddress(finalAddr);
+    if (!next) return;
+    const c = compute(next, variantByPosition[id]);
+    const finalAddr = c.stages.flatMap((s) => s.cells).find((x) => x.isFinal)?.address;
+    setSelectedAddress(finalAddr ?? null);
     setMobileNavOpen(false);
+  };
+
+  const handleVariantChange = (variantId: string) => {
+    setVariantByPosition((prev) => ({ ...prev, [position.id]: variantId }));
+    // Сохраняем фокус на финале
+    const c = compute(position, variantId);
+    const finalAddr = c.stages.flatMap((s) => s.cells).find((x) => x.isFinal)?.address;
+    setSelectedAddress(finalAddr ?? null);
   };
 
   const selectedCell: Cell | null = useMemo(() => {
@@ -68,11 +86,7 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
             className="flex h-9 w-9 items-center justify-center rounded-md border border-border lg:hidden"
             aria-label="Каталог услуг"
           >
-            {mobileNavOpen ? (
-              <X className="h-4 w-4" />
-            ) : (
-              <Menu className="h-4 w-4" />
-            )}
+            {mobileNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-md bg-foreground" />
@@ -81,8 +95,11 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
             </div>
           </div>
         </div>
-        <div className="hidden text-xs text-muted-foreground md:block">
-          {catalog.length} позиций в каталоге
+        <div className="hidden items-center gap-3 text-xs text-muted-foreground md:flex">
+          <span>{catalog.length} позиций · iPhone 16</span>
+          <span className="rounded-full border border-border bg-card px-2 py-0.5 font-mono">
+            данные из вашей таблицы
+          </span>
         </div>
       </header>
 
@@ -93,7 +110,6 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
           onSelect={handleSelectPosition}
         />
 
-        {/* Мобильный оверлей навигатора */}
         {mobileNavOpen && (
           <div
             className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -113,7 +129,16 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
         )}
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <PositionHeader position={position} />
+          <PositionHeader position={position} finalPrice={composed.finalPrice} />
+
+          {position.variants && position.variants.length > 0 && (
+            <VariantSwitcher
+              variants={position.variants}
+              selectedId={composed.selectedVariant?.id ?? null}
+              onSelect={handleVariantChange}
+            />
+          )}
+
           <Legend />
 
           <div className="flex gap-6">
@@ -132,7 +157,7 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
 
                 <div className="-mx-5 overflow-x-auto px-5 pb-2">
                   <div className="flex min-w-max items-start gap-3">
-                    {position.stages.map((stage, i) => (
+                    {composed.stages.map((stage, i) => (
                       <div key={stage.id} className="flex items-stretch gap-3">
                         <PipelineStage
                           stage={stage}
@@ -140,7 +165,7 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
                           selectedAddress={selectedAddress}
                           onSelectCell={handleSelectCell}
                         />
-                        {i < position.stages.length - 1 && (
+                        {i < composed.stages.length - 1 && (
                           <div className="flex shrink-0 items-center pt-12">
                             <ChevronRight className="h-5 w-5 text-muted-foreground/60" />
                           </div>
@@ -153,16 +178,13 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
 
               <section className="mt-6 rounded-2xl border border-border bg-card/40 p-5">
                 <OutputTargets
-                  outputs={position.outputs}
+                  outputs={composed.outputs}
                   onSelectAddress={handleSelectAddress}
                 />
               </section>
             </main>
 
-            <CellInspector
-              cell={selectedCell}
-              onSelectAddress={handleSelectAddress}
-            />
+            <CellInspector cell={selectedCell} onSelectAddress={handleSelectAddress} />
           </div>
         </div>
       </div>
@@ -170,7 +192,6 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
   );
 }
 
-// Упрощённая обёртка для мобильного оверлея — рендерит ту же навигацию.
 function MobileCatalog({
   positions,
   selectedId,
@@ -187,9 +208,7 @@ function MobileCatalog({
       </div>
       <ul className="flex max-h-[80vh] flex-col gap-1 overflow-y-auto">
         {positions.map((p) => {
-          const finalCell = p.stages
-            .flatMap((s) => s.cells)
-            .find((c) => c.isFinal);
+          const final = getQuickFinal(p);
           const isActive = p.id === selectedId;
           return (
             <li key={p.id}>
@@ -205,7 +224,7 @@ function MobileCatalog({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] leading-tight">
-                    {p.device} · {p.category}
+                    {p.category}
                   </span>
                   <span
                     className={cn(
@@ -222,9 +241,7 @@ function MobileCatalog({
                     isActive ? "text-background" : "text-money",
                   )}
                 >
-                  {finalCell?.value
-                    ? `${finalCell.value.toLocaleString("ru-RU")} ₽`
-                    : "—"}
+                  {final !== null ? `${final.toLocaleString("ru-RU")} ₽` : "—"}
                 </span>
               </button>
             </li>

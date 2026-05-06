@@ -25,7 +25,7 @@ export function PositionHeader({ position }: Props) {
             <span className="text-foreground">{position.variant}</span>
           </div>
           <h2 className="text-lg font-semibold text-foreground text-balance">
-            Замена дисплея iPhone 16 — Оригинал
+            {position.serviceName}
           </h2>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span className="font-mono">{position.code}</span>
@@ -37,18 +37,23 @@ export function PositionHeader({ position }: Props) {
               <Clock className="h-3 w-3" />
               {position.laborMinutes} мин
             </span>
+            {position.draft && (
+              <span className="rounded-full border border-dashed border-foreground/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground/70">
+                черновик
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {finalCell && (
+      {finalCell && finalCell.value !== null && (
         <div className="flex items-center gap-3 rounded-xl border border-money/40 bg-money-muted px-4 py-3">
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Конечная цена
             </div>
             <div className="text-2xl font-semibold tabular-nums text-money">
-              {finalCell.value?.toLocaleString("ru-RU")} ₽
+              {finalCell.value.toLocaleString("ru-RU")} ₽
             </div>
           </div>
         </div>

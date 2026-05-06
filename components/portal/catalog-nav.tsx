@@ -133,7 +133,9 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                                   "shrink-0 font-mono text-[11px] tabular-nums",
                                   isActive
                                     ? "text-background"
-                                    : "text-money",
+                                    : p.draft
+                                      ? "text-muted-foreground"
+                                      : "text-money",
                                 )}
                               >
                                 {finalCell?.value

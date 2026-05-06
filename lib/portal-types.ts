@@ -1,7 +1,7 @@
 // Типы для прайс-портала.
 // Каждая ценовая величина — это "ячейка" со своим адресом.
 // Адрес — это путь через точку: device.position.stage.field
-// Например: iphone16.display_orig.part.sources.icomponents.price
+// Например: iphone16.display_orig_used.part.sources.icomponents
 
 export type CellKind =
   | "source" // данные из внешнего парсера/поставщика
@@ -11,7 +11,7 @@ export type CellKind =
   | "output"; // выгрузка во внешнюю систему
 
 export type Cell = {
-  /** Уникальный адрес ячейки. Можно дёрнуть из любой системы. */
+  /** Уникальный адрес ячейки в портале. Можно дёрнуть из любой системы. */
   address: string;
   /** Человекочитаемое название */
   label: string;
@@ -31,6 +31,8 @@ export type Cell = {
   note?: string;
   /** Ярко выделить как итоговую */
   isFinal?: boolean;
+  /** Привязка к ячейке исходной Google-таблицы, например "БД_УСЛУГИ_РО!P916". */
+  sheetRef?: string;
 };
 
 export type Stage = {
@@ -60,14 +62,18 @@ export type Output = {
 export type Position = {
   id: string;
   device: string;
+  /** Полное название услуги (например "Замена дисплея — Снятый оригинал (бу)") */
+  serviceName: string;
   category: string;
   variant: string;
-  /** Полный код позиции в РО */
+  /** Полный код услуги в Ремонлайне, например "i16-DIS" */
   code: string;
   /** Гарантия */
   warranty: string;
-  /** Время работы */
+  /** Время работы в минутах */
   laborMinutes: number;
   stages: Stage[];
   outputs: Output[];
+  /** Помечает позицию как черновик */
+  draft?: boolean;
 };

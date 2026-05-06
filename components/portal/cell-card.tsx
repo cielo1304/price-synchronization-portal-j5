@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/lib/portal-types";
-import { Database, Sigma, Pencil, Cpu, ArrowDownToLine } from "lucide-react";
+import { Database, Sigma, Pencil, Cpu, ArrowDownToLine, FileSpreadsheet } from "lucide-react";
 
 const KIND_META: Record<
   Cell["kind"],
@@ -93,6 +93,12 @@ export function CellCard({ cell, selected, onSelect }: Props) {
         <div className="truncate font-mono text-[10px] text-muted-foreground">
           {cell.address}
         </div>
+        {cell.sheetRef && (
+          <div className="mt-0.5 flex items-center gap-1 truncate font-mono text-[9px] text-muted-foreground/70">
+            <FileSpreadsheet className="h-2.5 w-2.5 shrink-0" />
+            {cell.sheetRef}
+          </div>
+        )}
       </div>
     </button>
   );

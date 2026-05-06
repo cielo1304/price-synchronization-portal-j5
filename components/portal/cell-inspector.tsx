@@ -2,7 +2,7 @@
 
 import type { Cell } from "@/lib/portal-types";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Copy, Link2 } from "lucide-react";
+import { ArrowRight, Copy, Link2, FileSpreadsheet } from "lucide-react";
 
 type Props = {
   cell: Cell | null;
@@ -123,6 +123,22 @@ export function CellInspector({ cell, onSelectAddress }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {cell.sheetRef && (
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <FileSpreadsheet className="h-3 w-3" /> Где в Google Sheets
+            </div>
+            <div className="rounded-lg border border-border bg-secondary px-2.5 py-2">
+              <code className="font-mono text-[11px] text-foreground">
+                {cell.sheetRef}
+              </code>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              При импорте этой ячейки портал заберёт значение отсюда и привяжет к API-адресу выше.
+            </p>
           </div>
         )}
 

@@ -1,28 +1,51 @@
-import type { Position } from "./portal-types";
+import type { Cell, Output, Position, Stage } from "./portal-types";
 
-// Фабрика создаёт Position по простому набору параметров,
-// чтобы не дублировать структуру стадий.
-//
-// Когда придёт реальный XLSX из Google Sheets — мы заменим
-// этот каталог на сгенерированный из БД_УСЛУГИ_РО + БД_ЗАПЧАСТИ.
+// Фабрика создаёт Position из простых параметров.
+// Цифры ниже — РЕАЛЬНЫЕ данные из вашей Google Sheets:
+//   ПРАЙС_ЛИСТ, БД_УСЛУГИ_РО, БД_ЗАПЧАСТИ, РЕМОНТ_ЯБЛОК, МАТРИЦА_СТОИМОСТИ_РАБОТ.
+// У каждой ячейки сохранён sheetRef — точный адрес в Google-таблице.
+
+type Source = {
+  key: string;
+  label: string;
+  /** Цена поставщика. null = парсер не вернул (нет в наличии) */
+  price: number | null;
+  sheetRef?: string;
+};
 
 type PositionInput = {
   id: string;
   device: string;
+  /** Полное название услуги (E-колонка в БД_УСЛУГИ_РО) */
+  serviceName: string;
   category: string;
   variant: string;
+  /** Код услуги в Ремонлайне (i16-DIS, i16-BAT и т.д.) */
   code: string;
   warranty: string;
   laborMinutes: number;
-  /** Цены поставщиков. Если пусто — позиция без запчасти (только работа) */
-  sources?: Array<{ key: string; label: string; price: number; note?: string }>;
-  /** Наценка % */
+  /** Источники цен запчасти. Пусто = только работа без запчасти */
+  sources?: Source[];
+  /** Наценка % (из БД_ЗАПЧАСТИ.N) */
   markupPct?: number;
   /** Шаг округления розницы запчасти */
   roundStep?: number;
-  /** Стоимость работы */
+  /** Стоимость работы (БД_УСЛУГИ_РО.P) */
   laborPrice: number;
-  /** Если позиция ещё не настроена — будет помечена "draft" */
+  /** Адрес работы в Google Sheets, например "БД_УСЛУГИ_РО!P916" */
+  laborSheetRef?: string;
+  /** Рекомендованная цена работы из МАТРИЦЫ (если отличается — рассинхрон) */
+  matrixRecommendedLabor?: number;
+  matrixSheetRef?: string;
+  /** Цена конкурента "Ремонт яблок" из РЕМОНТ_ЯБЛОК */
+  competitorPrice?: number;
+  competitorSheetRef?: string;
+  /** Адрес итоговой строки в БД_ЗАПЧАСТИ для запчасти (для P-колонки) */
+  partRetailSheetRef?: string;
+  /** Адрес строки в ПРАЙС_ЛИСТ для итоговой цены */
+  priceListSheetRef?: string;
+  /** Адрес карточки в БД_МОЙ СКЛАД */
+  moyskladSheetRef?: string;
   draft?: boolean;
 };
 
@@ -32,6 +55,7 @@ export function buildPosition(input: PositionInput): Position {
   const {
     id,
     device,
+    serviceName,
     category,
     variant,
     code,
@@ -41,16 +65,29 @@ export function buildPosition(input: PositionInput): Position {
     markupPct = 0,
     roundStep = 50,
     laborPrice,
+    laborSheetRef,
+    matrixRecommendedLabor,
+    matrixSheetRef,
+    competitorPrice,
+    competitorSheetRef,
+    partRetailSheetRef,
+    priceListSheetRef,
+    moyskladSheetRef,
+    draft,
   } = input;
 
+  const validSources = sources.filter((s) => s.price !== null) as Array<
+    Source & { price: number }
+  >;
   const hasPart = sources.length > 0;
-  const purchase = hasPart ? Math.max(...sources.map((s) => s.price)) : 0;
-  const partRetail = hasPart
+  const hasParsed = validSources.length > 0;
+  const purchase = hasParsed ? Math.max(...validSources.map((s) => s.price)) : 0;
+  const partRetail = hasParsed
     ? ceilTo(purchase * (1 + markupPct / 100), roundStep)
     : 0;
   const final = partRetail + laborPrice;
 
-  const stages: Position["stages"] = [];
+  const stages: Stage[] = [];
 
   if (hasPart) {
     stages.push({
@@ -58,15 +95,21 @@ export function buildPosition(input: PositionInput): Position {
       title: "Источники цен",
       subtitle: "Парсеры поставщиков запчасти",
       canAdd: true,
-      cells: sources.map((s) => ({
-        address: `${id}.part.sources.${s.key}`,
-        label: s.label,
-        kind: "source" as const,
-        value: s.price,
-        unit: "₽" as const,
-        source: `parser:${s.key}`,
-        note: s.note ?? "Обновляется каждые 6 часов",
-      })),
+      cells: sources.map(
+        (s): Cell => ({
+          address: `${id}.part.sources.${s.key}`,
+          label: s.label,
+          kind: "source",
+          value: s.price,
+          unit: "₽",
+          source: `парсер: ${s.label}`,
+          sheetRef: s.sheetRef,
+          note:
+            s.price === null
+              ? "Парсер не вернул цену — нет в наличии у поставщика"
+              : "Обновляется автоматически",
+        }),
+      ),
     });
 
     stages.push({
@@ -78,10 +121,13 @@ export function buildPosition(input: PositionInput): Position {
           address: `${id}.part.purchase_price`,
           label: "Закупка",
           kind: "auto",
-          value: purchase,
+          value: purchase || null,
           unit: "₽",
           formula: "MAX(sources)",
-          dependsOn: sources.map((s) => `${id}.part.sources.${s.key}`),
+          dependsOn: validSources.map((s) => `${id}.part.sources.${s.key}`),
+          note: hasParsed
+            ? undefined
+            : "Нет данных от поставщиков — нужна ручная закупка",
         },
       ],
     });
@@ -89,7 +135,7 @@ export function buildPosition(input: PositionInput): Position {
     stages.push({
       id: "markup",
       title: "Наценка",
-      subtitle: "Сколько зарабатываем сверху",
+      subtitle: "Сколько добавляем сверху закупки",
       cells: [
         {
           address: `${id}.part.markup_pct`,
@@ -98,7 +144,10 @@ export function buildPosition(input: PositionInput): Position {
           value: markupPct,
           unit: "%",
           source: "Установлено вручную",
-          note: variant === "Оригинал" ? "По умолчанию для оригиналов" : undefined,
+          sheetRef: partRetailSheetRef
+            ? partRetailSheetRef.replace(/!P/, "!N")
+            : undefined,
+          note: "В БД_ЗАПЧАСТИ колонка N",
         },
       ],
     });
@@ -106,37 +155,82 @@ export function buildPosition(input: PositionInput): Position {
     stages.push({
       id: "part_retail",
       title: "Цена запчасти",
-      subtitle: `Округляется до ${roundStep} ₽`,
+      subtitle: `Округляется вверх до ${roundStep} ₽`,
       cells: [
         {
           address: `${id}.part.retail_price`,
           label: "Розница запчасти",
           kind: "formula",
-          value: partRetail,
+          value: partRetail || null,
           unit: "₽",
-          formula: `CEIL(purchase × (1 + markup), ${roundStep})`,
+          formula: `CEIL(закупка × (1 + наценка/100), ${roundStep})`,
           dependsOn: [`${id}.part.purchase_price`, `${id}.part.markup_pct`],
+          sheetRef: partRetailSheetRef,
+          note: partRetailSheetRef
+            ? `Уходит в ${partRetailSheetRef} (колонка P в БД_ЗАПЧАСТИ)`
+            : undefined,
         },
       ],
     });
   }
 
+  // Стадия "Работа" — две ячейки рядом: рекомендация из матрицы + фактическая
+  const laborCells: Cell[] = [];
+  if (matrixRecommendedLabor !== undefined) {
+    laborCells.push({
+      address: `${id}.labor.matrix_recommended`,
+      label: "По матрице",
+      kind: "auto",
+      value: matrixRecommendedLabor,
+      unit: "₽",
+      formula: "МАТРИЦА × коэф. модели",
+      sheetRef: matrixSheetRef,
+      note:
+        matrixRecommendedLabor !== laborPrice
+          ? `Рассинхрон: фактическая ${laborPrice} ≠ рекомендация ${matrixRecommendedLabor}`
+          : "Совпадает с фактической",
+    });
+  }
+  laborCells.push({
+    address: `${id}.labor.price`,
+    label: "Стоимость работы",
+    kind: "manual",
+    value: laborPrice,
+    unit: "₽",
+    source: "Установлено вручную",
+    sheetRef: laborSheetRef,
+    note: laborSheetRef
+      ? `В Google Sheets живёт по адресу ${laborSheetRef}`
+      : undefined,
+  });
+
   stages.push({
     id: "labor",
     title: "Работа",
     subtitle: hasPart ? "Стоимость замены" : "Стоимость работы",
-    cells: [
-      {
-        address: `${id}.labor.price`,
-        label: "Стоимость работы",
-        kind: "manual",
-        value: laborPrice,
-        unit: "₽",
-        source: "Установлено вручную",
-        note: "По прайсу мастеров",
-      },
-    ],
+    cells: laborCells,
   });
+
+  // Стадия "Конкурент"
+  if (competitorPrice !== undefined) {
+    stages.push({
+      id: "competitor",
+      title: "Конкурент",
+      subtitle: "Ремонт яблок · референс",
+      cells: [
+        {
+          address: `${id}.competitor.remontyablok`,
+          label: "Ремонт яблок",
+          kind: "source",
+          value: competitorPrice,
+          unit: "₽",
+          source: "парсер remontyablok.ru",
+          sheetRef: competitorSheetRef,
+          note: "Используется как референс при корректировке цены",
+        },
+      ],
+    });
+  }
 
   stages.push({
     id: "final",
@@ -155,18 +249,22 @@ export function buildPosition(input: PositionInput): Position {
         dependsOn: hasPart
           ? [`${id}.part.retail_price`, `${id}.labor.price`]
           : [`${id}.labor.price`],
+        sheetRef: priceListSheetRef,
+        note: priceListSheetRef
+          ? `В Google Sheets: ${priceListSheetRef} (формула F)`
+          : undefined,
         isFinal: true,
       },
     ],
   });
 
-  const outputs: Position["outputs"] = [
+  const outputs: Output[] = [
     {
       id: "site",
       name: "maxmobiles.ru",
       description: "Карточка услуги на сайте",
       status: "synced",
-      lastSyncedAt: "2 минуты назад",
+      lastSyncedAt: "из МойСклад",
       fields: [
         {
           label: "Цена",
@@ -179,9 +277,11 @@ export function buildPosition(input: PositionInput): Position {
     {
       id: "moysklad",
       name: "МойСклад",
-      description: "Карточка товара/услуги",
-      status: "pending",
-      lastSyncedAt: "ожидает синхронизации",
+      description: moyskladSheetRef
+        ? `Карточка ${moyskladSheetRef.split("!")[1] ?? ""}`
+        : "Карточка товара/услуги",
+      status: hasPart && !hasParsed ? "pending" : "synced",
+      lastSyncedAt: moyskladSheetRef ?? "ожидает синхронизации",
       fields: [
         {
           label: "Цена продажи",
@@ -193,10 +293,10 @@ export function buildPosition(input: PositionInput): Position {
     },
     {
       id: "remonline",
-      name: "Ремонлайн (roapp.io)",
+      name: "Ремонлайн",
       description: hasPart ? "Запчасть + работа отдельно" : "Только работа",
       status: "synced",
-      lastSyncedAt: "5 минут назад",
+      lastSyncedAt: `код ${code}`,
       fields: hasPart
         ? [
             {
@@ -232,6 +332,7 @@ export function buildPosition(input: PositionInput): Position {
   return {
     id,
     device,
+    serviceName,
     category,
     variant,
     code,
@@ -239,154 +340,250 @@ export function buildPosition(input: PositionInput): Position {
     laborMinutes,
     stages,
     outputs,
+    draft,
   };
 }
 
-// Каталог. Цифры — ориентировочные, чтобы прочувствовать UX.
-// При импорте XLSX заменим на реальные.
+// =====================================================================
+// КАТАЛОГ. РЕАЛЬНЫЕ ДАННЫЕ из вашей Google-таблицы.
+// Источники:
+//   ПРАЙС_ЛИСТ строки 1166-1174 (iPhone 16 Дисплей варианты)
+//   БД_УСЛУГИ_РО P913-P920 (работы по iPhone 16)
+//   БД_ЗАПЧАСТИ строки 275-280 (запчасти на дисплей iPhone 16)
+//   МАТРИЦА_СТОИМОСТИ_РАБОТ строки 28-31 (рекомендованные цены работ)
+//   РЕМОНТ_ЯБЛОК (цены конкурента, подтянуты VLOOKUP)
+// =====================================================================
+
 export const CATALOG: Position[] = [
+  // iPhone 16 Дисплей — Снятый оригинал (бу) — самый популярный вариант
   buildPosition({
-    id: "iphone16.display_orig",
+    id: "iphone16.display_orig_used",
     device: "iPhone 16",
-    category: "Дисплей",
-    variant: "Оригинал",
-    code: "DSP-IP16-ORIG",
-    warranty: "180 дней",
-    laborMinutes: 40,
+    serviceName: "Замена дисплея — Снятый оригинал (бу)",
+    category: "Дисплей — замена",
+    variant: "Снятый оригинал (бу)",
+    code: "i16-DIS",
+    warranty: "90 дней",
+    laborMinutes: 30,
     sources: [
-      { key: "icomponents", label: "iComponents", price: 18500 },
-      { key: "moslcd", label: "MOS-LCD", price: 17900 },
+      {
+        key: "icomponents",
+        label: "iComponents",
+        price: 13900,
+        sheetRef: "БД_ЗАПЧАСТИ!I276",
+      },
+      {
+        key: "moslcd",
+        label: "MOS-LCD",
+        price: null,
+        sheetRef: "БД_ЗАПЧАСТИ!L276",
+      },
     ],
-    markupPct: 12,
-    laborPrice: 2000,
+    markupPct: 17.3,
+    laborPrice: 7000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P916",
+    matrixRecommendedLabor: 6100,
+    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
+    competitorPrice: 20000,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    partRetailSheetRef: "БД_ЗАПЧАСТИ!P276",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F1167",
   }),
+
+  // iPhone 16 Дисплей — Снятый оригинал (неизвестная деталь)
+  buildPosition({
+    id: "iphone16.display_orig_unknown",
+    device: "iPhone 16",
+    serviceName: "Замена дисплея — Снятый оригинал (неизв.)",
+    category: "Дисплей — замена",
+    variant: "Снятый оригинал (неизв.)",
+    code: "i16-DIS",
+    warranty: "90 дней",
+    laborMinutes: 30,
+    sources: [
+      {
+        key: "icomponents",
+        label: "iComponents",
+        price: 13200,
+        sheetRef: "БД_ЗАПЧАСТИ!I277",
+      },
+    ],
+    markupPct: 18,
+    laborPrice: 7000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P916",
+    matrixRecommendedLabor: 6100,
+    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
+    competitorPrice: 20000,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    partRetailSheetRef: "БД_ЗАПЧАСТИ!P277",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F1168",
+  }),
+
+  // iPhone 16 Дисплей — Восстановленный оригинал (бу)
+  buildPosition({
+    id: "iphone16.display_refurb_used",
+    device: "iPhone 16",
+    serviceName: "Замена дисплея — Восстановленный оригинал (бу)",
+    category: "Дисплей — замена",
+    variant: "Восст. оригинал (бу)",
+    code: "i16-DIS",
+    warranty: "90 дней",
+    laborMinutes: 30,
+    sources: [
+      {
+        key: "icomponents",
+        label: "iComponents",
+        price: 13400,
+        sheetRef: "БД_ЗАПЧАСТИ!I278",
+      },
+      {
+        key: "moslcd",
+        label: "MOS-LCD",
+        price: 13990,
+        sheetRef: "БД_ЗАПЧАСТИ!L278",
+      },
+    ],
+    markupPct: 13,
+    laborPrice: 7000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P916",
+    matrixRecommendedLabor: 6100,
+    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
+    competitorPrice: 20000,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    partRetailSheetRef: "БД_ЗАПЧАСТИ!P278",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F1169",
+  }),
+
+  // iPhone 16 Дисплей — Аналог (запчасти нет в БД)
   buildPosition({
     id: "iphone16.display_copy",
     device: "iPhone 16",
-    category: "Дисплей",
-    variant: "Копия (Аналог)",
-    code: "DSP-IP16-COPY",
+    serviceName: "Замена дисплея — Аналог",
+    category: "Дисплей — замена",
+    variant: "Аналог",
+    code: "i16-DIS",
     warranty: "90 дней",
-    laborMinutes: 40,
-    sources: [
-      { key: "icomponents", label: "iComponents", price: 7900 },
-      { key: "moslcd", label: "MOS-LCD", price: 7600 },
-    ],
-    markupPct: 35,
-    laborPrice: 2000,
+    laborMinutes: 30,
+    sources: [],
+    laborPrice: 7000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P916",
+    matrixRecommendedLabor: 6100,
+    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
+    competitorPrice: 15000,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F1171",
+    draft: true,
   }),
+
+  // iPhone 16 — Переклей разбитого стекла
+  buildPosition({
+    id: "iphone16.glass_reglue",
+    device: "iPhone 16",
+    serviceName: "Переклей разбитого стекла дисплея",
+    category: "Дисплей — переклей",
+    variant: "Без замены модуля",
+    code: "i16-DGL",
+    warranty: "90 дней",
+    laborMinutes: 60,
+    sources: [],
+    laborPrice: 20000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P918",
+    competitorPrice: 20000,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F1174",
+  }),
+
+  // iPhone 16 Аккумулятор
   buildPosition({
     id: "iphone16.battery",
     device: "iPhone 16",
-    category: "Аккумулятор",
+    serviceName: "Замена аккумулятора",
+    category: "Аккумулятор — замена",
     variant: "Оригинал",
-    code: "BAT-IP16-ORIG",
+    code: "i16-BAT",
     warranty: "180 дней",
     laborMinutes: 25,
-    sources: [
-      { key: "icomponents", label: "iComponents", price: 3400 },
-      { key: "moslcd", label: "MOS-LCD", price: 3200 },
-    ],
-    markupPct: 20,
-    laborPrice: 1500,
+    sources: [],
+    laborPrice: 7800,
+    laborSheetRef: "БД_УСЛУГИ_РО!P913",
+    draft: true,
   }),
+
+  // iPhone 16 Разъём зарядки
   buildPosition({
-    id: "iphone16.back_glass",
+    id: "iphone16.charge_port",
     device: "iPhone 16",
-    category: "Заднее стекло",
-    variant: "Оригинал",
-    code: "BG-IP16",
+    serviceName: "Замена разъёма зарядки",
+    category: "Разъём зарядки",
+    variant: "Замена",
+    code: "i16-CHG",
     warranty: "90 дней",
-    laborMinutes: 60,
-    sources: [{ key: "icomponents", label: "iComponents", price: 2400 }],
-    markupPct: 25,
-    laborPrice: 2500,
+    laborMinutes: 45,
+    sources: [],
+    laborPrice: 7500,
+    laborSheetRef: "БД_УСЛУГИ_РО!P915",
+    draft: true,
   }),
+
+  // iPhone 16 Камера основная
   buildPosition({
     id: "iphone16.camera_main",
     device: "iPhone 16",
-    category: "Основная камера",
-    variant: "Оригинал",
-    code: "CAM-IP16",
+    serviceName: "Замена основной камеры",
+    category: "Камера основная",
+    variant: "Замена",
+    code: "i16-CAMR",
     warranty: "90 дней",
     laborMinutes: 30,
-    sources: [{ key: "icomponents", label: "iComponents", price: 6800 }],
-    markupPct: 20,
-    laborPrice: 1800,
+    sources: [],
+    laborPrice: 7000,
+    laborSheetRef: "БД_УСЛУГИ_РО!P919",
     draft: true,
   }),
+
+  // iPhone 16 Камера фронтальная
   buildPosition({
-    id: "iphone15pro.display_orig",
-    device: "iPhone 15 Pro",
-    category: "Дисплей",
-    variant: "Оригинал",
-    code: "DSP-IP15P-ORIG",
-    warranty: "180 дней",
-    laborMinutes: 45,
-    sources: [
-      { key: "icomponents", label: "iComponents", price: 16500 },
-      { key: "moslcd", label: "MOS-LCD", price: 16200 },
-    ],
-    markupPct: 12,
-    laborPrice: 2000,
-  }),
-  buildPosition({
-    id: "iphone15pro.battery",
-    device: "iPhone 15 Pro",
-    category: "Аккумулятор",
-    variant: "Оригинал",
-    code: "BAT-IP15P",
-    warranty: "180 дней",
-    laborMinutes: 25,
-    sources: [{ key: "icomponents", label: "iComponents", price: 2900 }],
-    markupPct: 20,
-    laborPrice: 1500,
-  }),
-  buildPosition({
-    id: "iphone14.display_copy",
-    device: "iPhone 14",
-    category: "Дисплей",
-    variant: "Копия",
-    code: "DSP-IP14-COPY",
+    id: "iphone16.camera_front",
+    device: "iPhone 16",
+    serviceName: "Замена фронтальной камеры",
+    category: "Камера фронтальная",
+    variant: "Замена",
+    code: "i16-CAMF",
     warranty: "90 дней",
-    laborMinutes: 35,
-    sources: [
-      { key: "icomponents", label: "iComponents", price: 5400 },
-      { key: "moslcd", label: "MOS-LCD", price: 5100 },
-    ],
-    markupPct: 35,
-    laborPrice: 1800,
+    laborMinutes: 30,
+    sources: [],
+    laborPrice: 7600,
+    laborSheetRef: "БД_УСЛУГИ_РО!P920",
+    draft: true,
   }),
+
+  // iPhone 5S/SE 2016 Дисплей — пример старой ходовой модели
   buildPosition({
-    id: "iphone5.battery",
-    device: "iPhone 5",
-    category: "Аккумулятор",
-    variant: "Аналог ORIG",
-    code: "BAT-IP5",
-    warranty: "180 дней",
-    laborMinutes: 20,
+    id: "iphonese1.display_snyatii",
+    device: "iPhone 5S / SE 2016",
+    serviceName: "Замена дисплея — Снятый оригинал",
+    category: "Дисплей — замена",
+    variant: "Снятый оригинал",
+    code: "i5S-DIS",
+    warranty: "90 дней",
+    laborMinutes: 30,
     sources: [
-      { key: "icomponents", label: "iComponents", price: 430 },
-      { key: "moslcd", label: "MOS-LCD", price: 340 },
+      {
+        key: "icomponents",
+        label: "iComponents",
+        price: 1050,
+        sheetRef: "БД_ЗАПЧАСТИ!I150",
+      },
     ],
     markupPct: 12,
     laborPrice: 800,
-  }),
-  buildPosition({
-    id: "ipad.diagnostics",
-    device: "iPad",
-    category: "Диагностика",
-    variant: "Стандарт",
-    code: "DIAG-IPAD",
-    warranty: "—",
-    laborMinutes: 30,
-    laborPrice: 500,
+    laborSheetRef: "БД_УСЛУГИ_РО!P61",
+    competitorPrice: 2500,
+    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
+    partRetailSheetRef: "БД_ЗАПЧАСТИ!P150",
+    priceListSheetRef: "ПРАЙС_ЛИСТ!F127",
   }),
 ];
-
-export const CATALOG_DRAFTS = new Set(
-  CATALOG.filter((p) => false).map((p) => p.id),
-);
 
 // Группировка по устройству для левой панели.
 export type CatalogGroup = {
