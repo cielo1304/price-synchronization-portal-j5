@@ -472,30 +472,44 @@ export type CatalogGroup = {
   positions: PositionStub[];
 };
 
-// Сортировка моделей iPhone в порядке выхода — от новых к старым (17 → 5).
-// Внутри одной мажорной версии: Pro Max → Pro → Plus → base → mini → SE.
+// Сортировка моделей iPhone в порядке выхода — от новых к старым.
+// Группы по году релиза:
+//   17 (2025) → 16 (2024) → 15 (2023) → 14 (2022) → 13 (2021) → 12 (2020) →
+//   11 (2019) → XS/XS Max/XR (2018) → X (2017) → 8/8+ (2017) → 7/7+ (2016) →
+//   SE 2016 → 6S/6S+ (2015) → 6/6+ (2014) → 5S/5C (2013) → 5 (2012).
+// SE 2/SE 3 ставим рядом со своим поколением (11 и 13).
+// Внутри поколения: Pro Max → Pro → Air → Plus → base → 16E → mini.
 function deviceSortKey(device: string): [number, number, string] {
-  // SE привязываем к году выпуска: SE (2016)→5.5, SE2 (2020)→11.5, SE3 (2022)→13.5
-  const seMatch = device.match(/SE\s*(?:\((\d{4})\)|(\d))?/i);
-  if (seMatch) {
-    const year = seMatch[1] ? parseInt(seMatch[1], 10) : null;
-    const gen = seMatch[2] ? parseInt(seMatch[2], 10) : null;
-    let major = 5.5;
-    if (year === 2020 || gen === 2) major = 11.5;
-    else if (year === 2022 || gen === 3) major = 13.5;
-    return [major, 9, device]; // SE — в самый низ группы
+  // SE — отдельная ветка, привязка к году выпуска.
+  if (/iPhone\s+SE/i.test(device)) {
+    const yearMatch = device.match(/(\d{4})/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : 2016;
+    let major = 5.5; // SE 2016 — между 5S и 6
+    if (year === 2020) major = 11.5; // между 11 и 12
+    else if (year === 2022) major = 13.5; // между 13 и 14
+    return [major, 9, device];
+  }
+
+  // X-серия (между 8 и 11): X (2017), XS / XS Max / XR (2018).
+  if (/iPhone\s+X(?!\d)/i.test(device)) {
+    if (/XS\s*Max/i.test(device)) return [10.5, 1, device];
+    if (/XS/i.test(device)) return [10.5, 2, device];
+    if (/XR/i.test(device)) return [10.5, 5, device];
+    return [10, 5, device]; // iPhone X
   }
 
   const m = device.match(/iPhone\s+(\d+)/i);
   const major = m ? parseInt(m[1], 10) : 0;
 
-  // Уровень модификации внутри мажорной версии
+  // Уровень модификации внутри одного поколения.
   let tier = 5; // base
   if (/Pro\s*Max/i.test(device)) tier = 1;
   else if (/Pro/i.test(device)) tier = 2;
-  else if (/Plus/i.test(device)) tier = 3;
-  else if (/mini/i.test(device)) tier = 6;
-  else if (/Max/i.test(device)) tier = 4; // XS Max и т.п.
+  else if (/Air/i.test(device)) tier = 3;
+  else if (/Plus/i.test(device)) tier = 4;
+  else if (/mini/i.test(device)) tier = 7;
+  else if (/^iPhone\s+\d+E$/i.test(device)) tier = 6; // 16E — entry
+  else if (/Max/i.test(device)) tier = 1;
 
   return [major, tier, device];
 }
