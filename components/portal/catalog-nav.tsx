@@ -20,7 +20,7 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
     const q = query.trim().toLowerCase();
     const filtered = q
       ? positions.filter((p) =>
-          [p.device, p.category, p.variant, p.code]
+          [p.device, p.category, p.variant, p.code, p.serviceName]
             .join(" ")
             .toLowerCase()
             .includes(q),
@@ -67,6 +67,13 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
           <ul className="flex flex-col gap-3">
             {groups.map((group) => {
               const isCollapsed = collapsed[group.device] ?? false;
+              // Подгруппируем позиции внутри устройства по category
+              const byCategory = new Map<string, Position[]>();
+              for (const p of group.positions) {
+                if (!byCategory.has(p.category))
+                  byCategory.set(p.category, []);
+                byCategory.get(p.category)!.push(p);
+              }
               return (
                 <li key={group.device}>
                   <button
@@ -95,58 +102,82 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                   </button>
 
                   {!isCollapsed && (
-                    <ul className="mt-1 flex flex-col gap-0.5">
-                      {group.positions.map((p) => {
-                        const isActive = p.id === selectedId;
-                        const finalCell = p.stages
-                          .flatMap((s) => s.cells)
-                          .find((c) => c.isFinal);
-                        return (
-                          <li key={p.id}>
-                            <button
-                              type="button"
-                              onClick={() => onSelect(p.id)}
-                              className={cn(
-                                "group flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition",
-                                isActive
-                                  ? "bg-foreground text-background"
-                                  : "text-foreground/90 hover:bg-muted/60",
+                    <div className="mt-1 flex flex-col gap-2.5">
+                      {Array.from(byCategory.entries()).map(
+                        ([category, items]) => {
+                          const onlyOne = items.length === 1;
+                          return (
+                            <div key={category} className="flex flex-col gap-1">
+                              {!onlyOne && (
+                                <div className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                                  {category}
+                                </div>
                               )}
-                            >
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[13px] leading-tight">
-                                  {p.category}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "block truncate text-[11px] leading-tight",
-                                    isActive
-                                      ? "text-background/70"
-                                      : "text-muted-foreground",
-                                  )}
-                                >
-                                  {p.variant}
-                                </span>
-                              </span>
-                              <span
-                                className={cn(
-                                  "shrink-0 font-mono text-[11px] tabular-nums",
-                                  isActive
-                                    ? "text-background"
-                                    : p.draft
-                                      ? "text-muted-foreground"
-                                      : "text-money",
-                                )}
-                              >
-                                {finalCell?.value
-                                  ? `${finalCell.value.toLocaleString("ru-RU")} ₽`
-                                  : "—"}
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                              <ul className="flex flex-col gap-0.5">
+                                {items.map((p) => {
+                                  const isActive = p.id === selectedId;
+                                  const finalCell = p.stages
+                                    .flatMap((s) => s.cells)
+                                    .find((c) => c.isFinal);
+                                  const label = onlyOne
+                                    ? p.category
+                                    : p.variant;
+                                  const sub = onlyOne ? p.variant : null;
+                                  return (
+                                    <li key={p.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => onSelect(p.id)}
+                                        className={cn(
+                                          "group flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition",
+                                          isActive
+                                            ? "bg-foreground text-background"
+                                            : "text-foreground/90 hover:bg-muted/60",
+                                        )}
+                                      >
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-[13px] leading-tight">
+                                            {label}
+                                          </span>
+                                          {sub && (
+                                            <span
+                                              className={cn(
+                                                "block truncate text-[11px] leading-tight",
+                                                isActive
+                                                  ? "text-background/70"
+                                                  : "text-muted-foreground",
+                                              )}
+                                            >
+                                              {sub}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span
+                                          className={cn(
+                                            "shrink-0 font-mono text-[11px] tabular-nums",
+                                            isActive
+                                              ? "text-background"
+                                              : p.draft
+                                                ? "text-muted-foreground"
+                                                : "text-money",
+                                          )}
+                                        >
+                                          {finalCell?.value
+                                            ? `${finalCell.value.toLocaleString(
+                                                "ru-RU",
+                                              )} ₽`
+                                            : "—"}
+                                        </span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
                   )}
                 </li>
               );
@@ -155,9 +186,10 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
         </nav>
 
         <div className="mt-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-          Реальный список загрузится из{" "}
-          <span className="font-mono text-foreground">БД_УСЛУГИ_РО</span> +{" "}
-          <span className="font-mono text-foreground">БД_ЗАПЧАСТИ</span>, когда вы пришлёте XLSX.
+          Данные взяты из{" "}
+          <span className="font-mono text-foreground">БД_УСЛУГИ_РО</span> и{" "}
+          <span className="font-mono text-foreground">БД_ЗАПЧАСТИ</span> вашей
+          Google-таблицы.
         </div>
       </div>
     </aside>
