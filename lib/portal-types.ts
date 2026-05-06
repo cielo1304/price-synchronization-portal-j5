@@ -77,3 +77,20 @@ export type Position = {
   /** Помечает позицию как черновик */
   draft?: boolean;
 };
+
+/**
+ * Лёгкий "заголовок" позиции для каталога-навигатора.
+ * Не содержит stages/outputs — только то, что нужно для рендера списка.
+ * Полную структуру строит getPositionById(id) лениво.
+ */
+export type PositionStub = {
+  id: string;
+  device: string;
+  family: string;
+  category: string;
+  variant: string;
+  code: string | null;
+  finalPrice: number | null;
+  warranty: string;
+  draft?: boolean;
+};

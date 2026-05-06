@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { Search, Plus, ChevronDown, Smartphone } from "lucide-react";
-import type { Position } from "@/lib/portal-types";
+import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  positions: Position[];
+  positions: PositionStub[];
   selectedId: string;
   onSelect: (id: string) => void;
 };
@@ -20,7 +20,8 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
     const q = query.trim().toLowerCase();
     const filtered = q
       ? positions.filter((p) =>
-          [p.device, p.category, p.variant, p.code, p.serviceName]
+          [p.device, p.category, p.variant, p.code]
+            .filter(Boolean)
             .join(" ")
             .toLowerCase()
             .includes(q),
@@ -66,9 +67,11 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
 
           <ul className="flex flex-col gap-3">
             {groups.map((group) => {
-              const isCollapsed = collapsed[group.device] ?? false;
-              // Подгруппируем позиции внутри устройства по category
-              const byCategory = new Map<string, Position[]>();
+              // Поисковой запрос автораскрывает все группы.
+              const isCollapsed = query
+                ? false
+                : (collapsed[group.device] ?? true);
+              const byCategory = new Map<string, PositionStub[]>();
               for (const p of group.positions) {
                 if (!byCategory.has(p.category))
                   byCategory.set(p.category, []);
@@ -116,12 +119,9 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                               <ul className="flex flex-col gap-0.5">
                                 {items.map((p) => {
                                   const isActive = p.id === selectedId;
-                                  const finalCell = p.stages
-                                    .flatMap((s) => s.cells)
-                                    .find((c) => c.isFinal);
                                   const label = onlyOne
                                     ? p.category
-                                    : p.variant;
+                                    : p.variant || p.category;
                                   const sub = onlyOne ? p.variant : null;
                                   return (
                                     <li key={p.id}>
@@ -162,8 +162,8 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                                                 : "text-money",
                                           )}
                                         >
-                                          {finalCell?.value
-                                            ? `${finalCell.value.toLocaleString(
+                                          {p.finalPrice
+                                            ? `${p.finalPrice.toLocaleString(
                                                 "ru-RU",
                                               )} ₽`
                                             : "—"}
@@ -186,10 +186,9 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
         </nav>
 
         <div className="mt-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-          Данные взяты из{" "}
-          <span className="font-mono text-foreground">БД_УСЛУГИ_РО</span> и{" "}
-          <span className="font-mono text-foreground">БД_ЗАПЧАСТИ</span> вашей
-          Google-таблицы.
+          {positions.length} позиций из{" "}
+          <span className="font-mono text-foreground">ПРАЙС_ЛИСТ</span> ·{" "}
+          <span className="font-mono text-foreground">БД_УСЛУГИ_РО</span>
         </div>
       </div>
     </aside>

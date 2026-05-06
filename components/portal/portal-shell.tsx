@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Menu, X } from "lucide-react";
-import type { Cell, Position } from "@/lib/portal-types";
+import type { Cell, PositionStub } from "@/lib/portal-types";
+import { getPositionById } from "@/lib/portal-catalog";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
 import { PipelineStage } from "./pipeline-stage";
@@ -12,41 +13,45 @@ import { CatalogNav } from "./catalog-nav";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  catalog: Position[];
+  index: PositionStub[];
   defaultPositionId?: string;
 };
 
-function getFinalAddress(position: Position): string | null {
-  return (
-    position.stages.flatMap((s) => s.cells).find((c) => c.isFinal)?.address ??
-    null
-  );
-}
-
-export function PortalShell({ catalog, defaultPositionId }: Props) {
+export function PortalShell({ index, defaultPositionId }: Props) {
   const [selectedPositionId, setSelectedPositionId] = useState<string>(
-    defaultPositionId ?? catalog[0]?.id ?? "",
+    defaultPositionId ?? index[0]?.id ?? "",
   );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Полная позиция строится лениво только для активного id.
   const position = useMemo(
-    () => catalog.find((p) => p.id === selectedPositionId) ?? catalog[0],
-    [catalog, selectedPositionId],
+    () =>
+      getPositionById(selectedPositionId) ??
+      (index[0] ? getPositionById(index[0].id) : null),
+    [selectedPositionId, index],
   );
 
   const allCells = useMemo(
-    () => position.stages.flatMap((s) => s.cells),
+    () => (position ? position.stages.flatMap((s) => s.cells) : []),
     [position],
   );
 
+  const finalAddress = useMemo(
+    () => allCells.find((c) => c.isFinal)?.address ?? null,
+    [allCells],
+  );
+
   const [selectedAddress, setSelectedAddress] = useState<string | null>(
-    getFinalAddress(position),
+    finalAddress,
   );
 
   const handleSelectPosition = (id: string) => {
     setSelectedPositionId(id);
-    const next = catalog.find((p) => p.id === id);
-    setSelectedAddress(next ? getFinalAddress(next) : null);
+    const next = getPositionById(id);
+    const fa =
+      next?.stages.flatMap((s) => s.cells).find((c) => c.isFinal)?.address ??
+      null;
+    setSelectedAddress(fa);
     setMobileNavOpen(false);
   };
 
@@ -57,6 +62,15 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
 
   const handleSelectCell = (cell: Cell) => setSelectedAddress(cell.address);
   const handleSelectAddress = (addr: string) => setSelectedAddress(addr);
+
+  if (!position) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Каталог пуст. Сначала запустите{" "}
+        <code className="font-mono">scripts/extract-all.js</code>.
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-6 md:px-6 md:py-8">
@@ -82,7 +96,9 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
           </div>
         </div>
         <div className="hidden items-center gap-3 text-xs text-muted-foreground md:flex">
-          <span>{catalog.length} позиций</span>
+          <span>
+            {index.length.toLocaleString("ru-RU")} позиций
+          </span>
           <span className="rounded-full border border-border bg-card px-2 py-0.5 font-mono">
             данные из вашей таблицы
           </span>
@@ -91,7 +107,7 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
 
       <div className="flex gap-6">
         <CatalogNav
-          positions={catalog}
+          positions={index}
           selectedId={selectedPositionId}
           onSelect={handleSelectPosition}
         />
@@ -106,7 +122,7 @@ export function PortalShell({ catalog, defaultPositionId }: Props) {
               onClick={(e) => e.stopPropagation()}
             >
               <MobileCatalog
-                positions={catalog}
+                positions={index}
                 selectedId={selectedPositionId}
                 onSelect={handleSelectPosition}
               />
@@ -178,7 +194,7 @@ function MobileCatalog({
   selectedId,
   onSelect,
 }: {
-  positions: Position[];
+  positions: PositionStub[];
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -189,9 +205,6 @@ function MobileCatalog({
       </div>
       <ul className="flex max-h-[80vh] flex-col gap-1 overflow-y-auto">
         {positions.map((p) => {
-          const final = p.stages
-            .flatMap((s) => s.cells)
-            .find((c) => c.isFinal)?.value;
           const isActive = p.id === selectedId;
           return (
             <li key={p.id}>
@@ -207,7 +220,7 @@ function MobileCatalog({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] leading-tight">
-                    {p.category}
+                    {p.device} · {p.category}
                   </span>
                   <span
                     className={cn(
@@ -224,7 +237,9 @@ function MobileCatalog({
                     isActive ? "text-background" : "text-money",
                   )}
                 >
-                  {final ? `${final.toLocaleString("ru-RU")} ₽` : "—"}
+                  {p.finalPrice
+                    ? `${p.finalPrice.toLocaleString("ru-RU")} ₽`
+                    : "—"}
                 </span>
               </button>
             </li>

@@ -1,92 +1,206 @@
-import type { Cell, Output, Position, Stage } from "./portal-types";
+import type {
+  Cell,
+  Output,
+  Position,
+  PositionStub,
+  Stage,
+} from "./portal-types";
+import rawPositions from "./portal-positions.json";
 
-// Фабрика создаёт Position из простых параметров.
-// Цифры ниже — РЕАЛЬНЫЕ данные из вашей Google Sheets:
-//   ПРАЙС_ЛИСТ, БД_УСЛУГИ_РО (колонка P), БД_ЗАПЧАСТИ, РЕМОНТ_ЯБЛОК.
-// Источник истины для стоимости работы — БД_УСЛУГИ_РО колонка P.
-// Лист МАТРИЦА_СТОИМОСТИ_РАБОТ намеренно не используется — это задел
-// под будущие коэффициенты от базовой модели.
+/**
+ * Каталог прайс-портала.
+ *
+ * Источник истины — Google-таблица, экстрагированная скриптом
+ * scripts/extract-all.js в lib/portal-positions.json.
+ *
+ * Архитектура:
+ *   • CATALOG_INDEX — массив "заголовков" (PositionStub) для навигатора слева.
+ *   • getPositionById(id) — лениво строит полную Position со стадиями и
+ *     выгрузками. Результат кэшируется.
+ */
 
-type Source = {
-  key: string;
-  label: string;
-  /** Цена поставщика. null = парсер не вернул (нет в наличии) */
-  price: number | null;
-  sheetRef?: string;
+// ── Сырые записи из ПРАЙС_ЛИСТ ──────────────────────────────────────────
+type RawSource = {
+  rowInPriceList: number;
+  code: string | null;
+  family: string;
+  model: string;
+  service: string;
+  warrantyDays: number | null;
+  finalPrice: number | null;
+  range: string | null;
+  formula: string | null;
+  priceListSheetRef: string;
+  priceListRangeRef: string | null;
+  labor: {
+    sheetRef: string;
+    name: string;
+    price: number | null;
+    duration: string | null;
+    warranty: number | null;
+  } | null;
+  part: {
+    sheetRef: string;
+    sheetRefRetail: string;
+    name: string;
+    partId: string | null;
+    model: string;
+    category: string;
+    purchaseICmp: number | null;
+    purchaseMOS: number | null;
+    purchase: number | null;
+    markupPct: number | null;
+    retailForPrice: number | null;
+    purchaseRO: number | null;
+    retailRO: number | null;
+  } | null;
+  mysklad: {
+    sheetRef?: string;
+    url?: string;
+    time?: string;
+    warranty?: string;
+    description?: string;
+    priceFrom?: unknown;
+  } | null;
+  competitorPrice: number | null;
 };
 
-type PositionInput = {
-  id: string;
-  device: string;
-  /** Полное название услуги (E-колонка в БД_УСЛУГИ_РО) */
-  serviceName: string;
+const records = rawPositions as unknown as RawSource[];
+
+// ── Утилиты ─────────────────────────────────────────────────────────────
+const slug = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^a-zа-я0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+
+// MROUND как в Google Sheets: 16304.7 → 16300, 16325 → 16350.
+const roundToStep = (n: number, step: number) =>
+  Math.round(n / step) * step;
+
+// Генерируем устойчивый id из строки ПРАЙС_ЛИСТ — это уникально и стабильно.
+function makeId(rec: RawSource): string {
+  return `${slug(rec.model)}.${rec.rowInPriceList}`;
+}
+
+// Разбираем услугу на категорию + вариант.
+//   "Дисплей - замена на СНЯТЫЙ ОРИГИНАЛ (бу)"
+//        → cat = "Дисплей — замена", var = "СНЯТЫЙ ОРИГИНАЛ (бу)"
+//   "Замена аккумулятора"
+//        → cat = "Аккумулятор", var = "Замена"
+//   "Корпус - замена"
+//        → cat = "Корпус", var = "замена"
+function classifyService(service: string): {
   category: string;
   variant: string;
-  /** Код услуги в Ремонлайне (i16-DIS, i16-BAT и т.д.) */
-  code: string;
-  warranty: string;
-  laborMinutes: number;
-  /** Источники цен запчасти. Пусто = только работа без запчасти */
-  sources?: Source[];
-  /** Наценка % (из БД_ЗАПЧАСТИ.N) */
-  markupPct?: number;
-  /** Шаг округления розницы запчасти */
-  roundStep?: number;
-  /** Стоимость работы (БД_УСЛУГИ_РО.P) */
-  laborPrice: number;
-  /** Адрес работы в Google Sheets, например "БД_УСЛУГИ_РО!P916" */
-  laborSheetRef?: string;
-  /** Цена конкурента "Ремонт яблок" из РЕМОНТ_ЯБЛОК */
-  competitorPrice?: number;
-  competitorSheetRef?: string;
-  /** Адрес итоговой строки в БД_ЗАПЧАСТИ для запчасти (для P-колонки) */
-  partRetailSheetRef?: string;
-  /** Адрес строки в ПРАЙС_ЛИСТ для итоговой цены */
-  priceListSheetRef?: string;
-  /** Адрес карточки в БД_МОЙ СКЛАД */
-  moyskladSheetRef?: string;
-  draft?: boolean;
-};
+} {
+  const s = service.trim();
 
-// Округление к ближайшему шагу (как MROUND в Google Sheets).
-// 16304.7 → 16300, 16325 → 16350.
-const roundToStep = (n: number, step: number) => Math.round(n / step) * step;
+  // Шаблон "X - Y на Z"
+  const m1 = s.match(/^(.+?)\s*[—-]\s*(.+?)\s+на\s+(.+)$/i);
+  if (m1) {
+    return {
+      category: `${m1[1].trim()} — ${m1[2].trim().toLowerCase()}`,
+      variant: m1[3].trim(),
+    };
+  }
 
-export function buildPosition(input: PositionInput): Position {
-  const {
-    id,
-    device,
-    serviceName,
+  // Шаблон "X - Y"
+  const m2 = s.match(/^(.+?)\s*[—-]\s*(.+)$/);
+  if (m2) {
+    return {
+      category: m2[1].trim(),
+      variant: m2[2].trim(),
+    };
+  }
+
+  // Шаблон "Замена X"
+  const m3 = s.match(/^Замена\s+(.+)$/i);
+  if (m3) {
+    const noun = m3[1].trim();
+    // нормализуем род: "аккумулятора" → "аккумулятор"
+    const head = noun.replace(
+      /(а|ы|и|у|е|я|ой|ий|его|ого|ому|ему)$/i,
+      "",
+    );
+    return {
+      category: head.charAt(0).toUpperCase() + head.slice(1),
+      variant: "Замена",
+    };
+  }
+
+  return { category: s, variant: "" };
+}
+
+// Парсер строки длительности "30 мин" → 30
+function parseMinutes(duration: string | null): number {
+  if (!duration) return 0;
+  const m = duration.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+// ── Лёгкий stub для навигатора ──────────────────────────────────────────
+function recordToStub(rec: RawSource): PositionStub {
+  const { category, variant } = classifyService(rec.service);
+  const isDraft =
+    rec.labor === null ||
+    rec.labor.price === null ||
+    (rec.formula?.includes("БД_ЗАПЧАСТИ") &&
+      (!rec.part || rec.part.purchase === null));
+
+  return {
+    id: makeId(rec),
+    device: rec.model,
+    family: rec.family,
     category,
     variant,
-    code,
-    warranty,
-    laborMinutes,
-    sources = [],
-    markupPct = 0,
-    roundStep = 50,
-    laborPrice,
-    laborSheetRef,
-    competitorPrice,
-    competitorSheetRef,
-    partRetailSheetRef,
-    priceListSheetRef,
-    moyskladSheetRef,
-    draft,
-  } = input;
+    code: rec.code,
+    finalPrice: rec.finalPrice,
+    warranty: rec.warrantyDays ? `${rec.warrantyDays} дней` : "—",
+    draft: isDraft,
+  };
+}
 
-  const validSources = sources.filter((s) => s.price !== null) as Array<
-    Source & { price: number }
-  >;
-  const hasPart = sources.length > 0;
-  const hasParsed = validSources.length > 0;
-  const purchase = hasParsed ? Math.max(...validSources.map((s) => s.price)) : 0;
-  const partRetail = hasParsed
-    ? roundToStep(purchase * (1 + markupPct / 100), roundStep)
-    : 0;
-  const final = partRetail + laborPrice;
+// ── Полная Position со стадиями и выгрузками ────────────────────────────
+function recordToPosition(rec: RawSource): Position {
+  const id = makeId(rec);
+  const { category, variant } = classifyService(rec.service);
 
   const stages: Stage[] = [];
+
+  // 1) Источники цен запчасти
+  const part = rec.part;
+  const hasPart = !!part;
+  const sources: Array<{
+    key: string;
+    label: string;
+    price: number | null;
+    sheetRef?: string;
+  }> = [];
+
+  if (part) {
+    sources.push({
+      key: "icomponents",
+      label: "iComponents",
+      price: part.purchaseICmp,
+      sheetRef: part.sheetRef.replace(/!P\d+/, `!I${part.sheetRef.match(/\d+/)?.[0] ?? ""}`),
+    });
+    sources.push({
+      key: "moslcd",
+      label: "MOS-LCD",
+      price: part.purchaseMOS,
+      sheetRef: part.sheetRef.replace(/!P\d+/, `!L${part.sheetRef.match(/\d+/)?.[0] ?? ""}`),
+    });
+  }
+
+  const validSources = sources.filter(
+    (s): s is typeof s & { price: number } => s.price !== null,
+  );
+  const hasParsed = validSources.length > 0;
+  const purchase = part?.purchase ?? (hasParsed ? Math.max(...validSources.map((s) => s.price)) : 0);
+  const markupPct = part?.markupPct ?? 0;
 
   if (hasPart) {
     stages.push({
@@ -143,18 +257,20 @@ export function buildPosition(input: PositionInput): Position {
           value: markupPct,
           unit: "%",
           source: "Установлено вручную",
-          sheetRef: partRetailSheetRef
-            ? partRetailSheetRef.replace(/!P/, "!N")
-            : undefined,
+          sheetRef: part?.sheetRef.replace(/!P/, "!N"),
           note: "В БД_ЗАПЧАСТИ колонка N",
         },
       ],
     });
 
+    const partRetail =
+      part?.retailRO ??
+      (hasParsed ? roundToStep(purchase * (1 + markupPct / 100), 50) : 0);
+
     stages.push({
       id: "part_retail",
       title: "Цена запчасти",
-      subtitle: `Округляется к ближайшим ${roundStep} ₽`,
+      subtitle: "Округляется к ближайшим 50 ₽",
       cells: [
         {
           address: `${id}.part.retail_price`,
@@ -162,18 +278,19 @@ export function buildPosition(input: PositionInput): Position {
           kind: "formula",
           value: partRetail || null,
           unit: "₽",
-          formula: `MROUND(закупка × (1 + наценка/100); ${roundStep})`,
+          formula: "MROUND(закупка × (1 + наценка/100); 50)",
           dependsOn: [`${id}.part.purchase_price`, `${id}.part.markup_pct`],
-          sheetRef: partRetailSheetRef,
-          note: partRetailSheetRef
-            ? `Уходит в ${partRetailSheetRef} (колонка P в БД_ЗАПЧАСТИ)`
+          sheetRef: part?.sheetRefRetail,
+          note: part?.sheetRefRetail
+            ? `Уходит в ${part.sheetRefRetail} (Q-колонка БД_ЗАПЧАСТИ)`
             : undefined,
         },
       ],
     });
   }
 
-  // Стадия "Работа" — фактическая стоимость работы из БД_УСЛУГИ_РО (колонка P)
+  // 2) Работа
+  const laborPrice = rec.labor?.price ?? 0;
   stages.push({
     id: "labor",
     title: "Работа",
@@ -183,19 +300,19 @@ export function buildPosition(input: PositionInput): Position {
         address: `${id}.labor.price`,
         label: "Стоимость работы",
         kind: "manual",
-        value: laborPrice,
+        value: laborPrice || null,
         unit: "₽",
         source: "БД_УСЛУГИ_РО · колонка P",
-        sheetRef: laborSheetRef,
-        note: laborSheetRef
-          ? `Источник истины: ${laborSheetRef}`
+        sheetRef: rec.labor?.sheetRef,
+        note: rec.labor?.sheetRef
+          ? `Источник истины: ${rec.labor.sheetRef}`
           : undefined,
       },
     ],
   });
 
-  // Стадия "Конкурент"
-  if (competitorPrice !== undefined) {
+  // 3) Конкурент
+  if (rec.competitorPrice !== null && rec.competitorPrice !== undefined) {
     stages.push({
       id: "competitor",
       title: "Конкурент",
@@ -205,16 +322,18 @@ export function buildPosition(input: PositionInput): Position {
           address: `${id}.competitor.remontyablok`,
           label: "Ремонт яблок",
           kind: "source",
-          value: competitorPrice,
+          value: rec.competitorPrice,
           unit: "₽",
           source: "парсер remontyablok.ru",
-          sheetRef: competitorSheetRef,
+          sheetRef: "РЕМОНТ_ЯБЛОК",
           note: "Используется как референс при корректировке цены",
         },
       ],
     });
   }
 
+  // 4) Финальная цена
+  const finalPrice = rec.finalPrice ?? laborPrice + (hasPart ? (part?.retailRO ?? 0) : 0);
   stages.push({
     id: "final",
     title: "Конечная цена",
@@ -224,7 +343,7 @@ export function buildPosition(input: PositionInput): Position {
         address: `${id}.service.final_price`,
         label: "Цена услуги",
         kind: "formula",
-        value: final,
+        value: finalPrice,
         unit: "₽",
         formula: hasPart
           ? "part.retail_price + labor.price"
@@ -232,27 +351,26 @@ export function buildPosition(input: PositionInput): Position {
         dependsOn: hasPart
           ? [`${id}.part.retail_price`, `${id}.labor.price`]
           : [`${id}.labor.price`],
-        sheetRef: priceListSheetRef,
-        note: priceListSheetRef
-          ? `В Google Sheets: ${priceListSheetRef} (формула F)`
-          : undefined,
+        sheetRef: rec.priceListSheetRef,
+        note: `В Google Sheets: ${rec.priceListSheetRef} (формула F)`,
         isFinal: true,
       },
     ],
   });
 
+  // ── Выгрузки ──────────────────────────────────────────────────────────
   const outputs: Output[] = [
     {
       id: "site",
       name: "maxmobiles.ru",
       description: "Карточка услуги на сайте",
       status: "synced",
-      lastSyncedAt: "из МойСклад",
+      lastSyncedAt: rec.mysklad?.url ? "из МойСклад" : "—",
       fields: [
         {
           label: "Цена",
           fromAddress: `${id}.service.final_price`,
-          value: final,
+          value: finalPrice,
           unit: "₽",
         },
       ],
@@ -260,16 +378,16 @@ export function buildPosition(input: PositionInput): Position {
     {
       id: "moysklad",
       name: "МойСклад",
-      description: moyskladSheetRef
-        ? `Карточка ${moyskladSheetRef.split("!")[1] ?? ""}`
-        : "Карточка товара/услуги",
-      status: hasPart && !hasParsed ? "pending" : "synced",
-      lastSyncedAt: moyskladSheetRef ?? "ожидает синхронизации",
+      description: rec.mysklad
+        ? "Карточка товара/услуги"
+        : "Не подключено",
+      status: rec.mysklad ? "synced" : "pending",
+      lastSyncedAt: rec.mysklad?.sheetRef ?? "ожидает синхронизации",
       fields: [
         {
           label: "Цена продажи",
           fromAddress: `${id}.service.final_price`,
-          value: final,
+          value: finalPrice,
           unit: "₽",
         },
       ],
@@ -279,7 +397,7 @@ export function buildPosition(input: PositionInput): Position {
       name: "Ремонлайн",
       description: hasPart ? "Запчасть + работа отдельно" : "Только работа",
       status: "synced",
-      lastSyncedAt: `код ${code}`,
+      lastSyncedAt: rec.code ? `код ${rec.code}` : "без кода",
       fields: hasPart
         ? [
             {
@@ -291,7 +409,7 @@ export function buildPosition(input: PositionInput): Position {
             {
               label: "Розница запчасти",
               fromAddress: `${id}.part.retail_price`,
-              value: partRetail,
+              value: part?.retailRO ?? 0,
               unit: "₽",
             },
             {
@@ -314,265 +432,65 @@ export function buildPosition(input: PositionInput): Position {
 
   return {
     id,
-    device,
-    serviceName,
+    device: rec.model,
+    serviceName: rec.service,
     category,
     variant,
-    code,
-    warranty,
-    laborMinutes,
+    code: rec.code ?? "—",
+    warranty: rec.warrantyDays ? `${rec.warrantyDays} дней` : "—",
+    laborMinutes: parseMinutes(rec.labor?.duration ?? null),
     stages,
     outputs,
-    draft,
+    draft:
+      rec.labor === null ||
+      rec.labor.price === null ||
+      (hasPart && !hasParsed),
   };
 }
 
-// =====================================================================
-// КАТАЛОГ. РЕАЛЬНЫЕ ДАННЫЕ из вашей Google-таблицы.
-// Источники:
-//   ПРАЙС_ЛИСТ строки 1166-1174 (iPhone 16 Дисплей варианты)
-//   БД_УСЛУГИ_РО P913-P920 (работы по iPhone 16) — источник истины
-//   БД_ЗАПЧАСТИ строки 275-280 (запчасти на дисплей iPhone 16)
-//   РЕМОНТ_ЯБЛОК (цены конкурента, подтянуты VLOOKUP)
-// =====================================================================
+// ── Публичный API ──────────────────────────────────────────────────────
+const recordsById = new Map<string, RawSource>(
+  records.map((r) => [makeId(r), r]),
+);
 
-export const CATALOG: Position[] = [
-  // iPhone 16 Дисплей — Снятый оригинал (бу) — самый популярный вариант
-  buildPosition({
-    id: "iphone16.display_orig_used",
-    device: "iPhone 16",
-    serviceName: "Замена дисплея — Снятый оригинал (бу)",
-    category: "Дисплей — замена",
-    variant: "Снятый оригинал (бу)",
-    code: "i16-DIS",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [
-      {
-        key: "icomponents",
-        label: "iComponents",
-        price: 13900,
-        sheetRef: "БД_ЗАПЧАСТИ!I276",
-      },
-      {
-        key: "moslcd",
-        label: "MOS-LCD",
-        price: null,
-        sheetRef: "БД_ЗАПЧАСТИ!L276",
-      },
-    ],
-    markupPct: 17.3,
-    laborPrice: 7000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    competitorPrice: 20000,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    partRetailSheetRef: "БД_ЗАПЧАСТИ!P276",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F1167",
-  }),
+const positionCache = new Map<string, Position>();
 
-  // iPhone 16 Дисплей — Снятый оригинал (неизвестная деталь)
-  buildPosition({
-    id: "iphone16.display_orig_unknown",
-    device: "iPhone 16",
-    serviceName: "Замена дисплея — Снятый оригинал (неизв.)",
-    category: "Дисплей — замена",
-    variant: "Снятый оригинал (неизв.)",
-    code: "i16-DIS",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [
-      {
-        key: "icomponents",
-        label: "iComponents",
-        price: 13200,
-        sheetRef: "БД_ЗАПЧАСТИ!I277",
-      },
-    ],
-    markupPct: 18,
-    laborPrice: 7000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    competitorPrice: 20000,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    partRetailSheetRef: "БД_ЗАПЧАСТИ!P277",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F1168",
-  }),
+export const CATALOG_INDEX: PositionStub[] = records.map(recordToStub);
 
-  // iPhone 16 Дисплей — Восстановленный оригинал (бу)
-  buildPosition({
-    id: "iphone16.display_refurb_used",
-    device: "iPhone 16",
-    serviceName: "Замена дисплея — Восстановленный оригинал (бу)",
-    category: "Дисплей — замена",
-    variant: "Восст. оригинал (бу)",
-    code: "i16-DIS",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [
-      {
-        key: "icomponents",
-        label: "iComponents",
-        price: 13400,
-        sheetRef: "БД_ЗАПЧАСТИ!I278",
-      },
-      {
-        key: "moslcd",
-        label: "MOS-LCD",
-        price: 13990,
-        sheetRef: "БД_ЗАПЧАСТИ!L278",
-      },
-    ],
-    markupPct: 13,
-    laborPrice: 7000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    competitorPrice: 20000,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    partRetailSheetRef: "БД_ЗАПЧАСТИ!P278",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F1169",
-  }),
+export function getPositionById(id: string): Position | null {
+  if (positionCache.has(id)) return positionCache.get(id)!;
+  const rec = recordsById.get(id);
+  if (!rec) return null;
+  const pos = recordToPosition(rec);
+  positionCache.set(id, pos);
+  return pos;
+}
 
-  // iPhone 16 Дисплей — Аналог (запчасти нет в БД)
-  buildPosition({
-    id: "iphone16.display_copy",
-    device: "iPhone 16",
-    serviceName: "Замена дисплея — Аналог",
-    category: "Дисплей — замена",
-    variant: "Аналог",
-    code: "i16-DIS",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [],
-    laborPrice: 7000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    competitorPrice: 15000,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F1171",
-    draft: true,
-  }),
-
-  // iPhone 16 — ��ереклей разбитого стекла
-  buildPosition({
-    id: "iphone16.glass_reglue",
-    device: "iPhone 16",
-    serviceName: "Переклей разбитого стекла дисплея",
-    category: "Дисплей — переклей",
-    variant: "Без замены модуля",
-    code: "i16-DGL",
-    warranty: "90 дней",
-    laborMinutes: 60,
-    sources: [],
-    laborPrice: 20000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P918",
-    competitorPrice: 20000,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F1174",
-  }),
-
-  // iPhone 16 Аккумулятор
-  buildPosition({
-    id: "iphone16.battery",
-    device: "iPhone 16",
-    serviceName: "Замена аккумулятора",
-    category: "Аккумулятор — замена",
-    variant: "Оригинал",
-    code: "i16-BAT",
-    warranty: "180 дней",
-    laborMinutes: 25,
-    sources: [],
-    laborPrice: 7800,
-    laborSheetRef: "БД_УСЛУГИ_РО!P913",
-    draft: true,
-  }),
-
-  // iPhone 16 Разъём зарядки
-  buildPosition({
-    id: "iphone16.charge_port",
-    device: "iPhone 16",
-    serviceName: "Замена разъёма зарядки",
-    category: "Разъём зарядки",
-    variant: "Замена",
-    code: "i16-CHG",
-    warranty: "90 дней",
-    laborMinutes: 45,
-    sources: [],
-    laborPrice: 7500,
-    laborSheetRef: "БД_УСЛУГИ_РО!P915",
-    draft: true,
-  }),
-
-  // iPhone 16 Камера основная
-  buildPosition({
-    id: "iphone16.camera_main",
-    device: "iPhone 16",
-    serviceName: "Замена основной камеры",
-    category: "Камера основная",
-    variant: "Замена",
-    code: "i16-CAMR",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [],
-    laborPrice: 7000,
-    laborSheetRef: "БД_УСЛУГИ_РО!P919",
-    draft: true,
-  }),
-
-  // iPhone 16 Камера фронтальная
-  buildPosition({
-    id: "iphone16.camera_front",
-    device: "iPhone 16",
-    serviceName: "Замена фронтальной камеры",
-    category: "Камера фронтальная",
-    variant: "Замена",
-    code: "i16-CAMF",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [],
-    laborPrice: 7600,
-    laborSheetRef: "БД_УСЛУГИ_РО!P920",
-    draft: true,
-  }),
-
-  // iPhone 5S/SE 2016 Дисплей — пример старой ходовой модели
-  buildPosition({
-    id: "iphonese1.display_snyatii",
-    device: "iPhone 5S / SE 2016",
-    serviceName: "Замена дисплея — Снятый оригинал",
-    category: "Дисплей — замена",
-    variant: "Снятый оригинал",
-    code: "i5S-DIS",
-    warranty: "90 дней",
-    laborMinutes: 30,
-    sources: [
-      {
-        key: "icomponents",
-        label: "iComponents",
-        price: 1050,
-        sheetRef: "БД_ЗАПЧАСТИ!I150",
-      },
-    ],
-    markupPct: 12,
-    laborPrice: 800,
-    laborSheetRef: "БД_УСЛУГИ_РО!P61",
-    competitorPrice: 2500,
-    competitorSheetRef: "РЕМОНТ_ЯБЛОК",
-    partRetailSheetRef: "БД_ЗАПЧАСТИ!P150",
-    priceListSheetRef: "ПРАЙС_ЛИСТ!F127",
-  }),
-];
-
-// Группировка по устройству для левой панели.
+// ── Группировка для левой панели ───────────────────────────────────────
 export type CatalogGroup = {
   device: string;
-  positions: Position[];
+  positions: PositionStub[];
 };
 
-export function groupCatalog(catalog: Position[]): CatalogGroup[] {
-  const map = new Map<string, Position[]>();
-  for (const p of catalog) {
-    if (!map.has(p.device)) map.set(p.device, []);
-    map.get(p.device)!.push(p);
+// Естественная сортировка по версии iPhone: 5 < 5S < 6 < ... < 16 < 16 Pro Max
+function deviceSortKey(device: string): [number, string] {
+  const m = device.match(/iPhone\s+(\d+)/i);
+  const major = m ? parseInt(m[1], 10) : 999;
+  return [major, device];
+}
+
+export function groupCatalog(stubs: PositionStub[]): CatalogGroup[] {
+  const map = new Map<string, PositionStub[]>();
+  for (const s of stubs) {
+    if (!map.has(s.device)) map.set(s.device, []);
+    map.get(s.device)!.push(s);
   }
-  return Array.from(map.entries()).map(([device, positions]) => ({
-    device,
-    positions,
-  }));
+  return Array.from(map.entries())
+    .sort((a, b) => {
+      const [ma, na] = deviceSortKey(a[0]);
+      const [mb, nb] = deviceSortKey(b[0]);
+      if (ma !== mb) return ma - mb;
+      return na.localeCompare(nb, "ru");
+    })
+    .map(([device, positions]) => ({ device, positions }));
 }
