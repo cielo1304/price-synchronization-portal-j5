@@ -472,11 +472,32 @@ export type CatalogGroup = {
   positions: PositionStub[];
 };
 
-// Естественная сортировка по версии iPhone: 5 < 5S < 6 < ... < 16 < 16 Pro Max
-function deviceSortKey(device: string): [number, string] {
+// Сортировка моделей iPhone в порядке выхода — от новых к старым (17 → 5).
+// Внутри одной мажорной версии: Pro Max → Pro → Plus → base → mini → SE.
+function deviceSortKey(device: string): [number, number, string] {
+  // SE привязываем к году выпуска: SE (2016)→5.5, SE2 (2020)→11.5, SE3 (2022)→13.5
+  const seMatch = device.match(/SE\s*(?:\((\d{4})\)|(\d))?/i);
+  if (seMatch) {
+    const year = seMatch[1] ? parseInt(seMatch[1], 10) : null;
+    const gen = seMatch[2] ? parseInt(seMatch[2], 10) : null;
+    let major = 5.5;
+    if (year === 2020 || gen === 2) major = 11.5;
+    else if (year === 2022 || gen === 3) major = 13.5;
+    return [major, 9, device]; // SE — в самый низ группы
+  }
+
   const m = device.match(/iPhone\s+(\d+)/i);
-  const major = m ? parseInt(m[1], 10) : 999;
-  return [major, device];
+  const major = m ? parseInt(m[1], 10) : 0;
+
+  // Уровень модификации внутри мажорной версии
+  let tier = 5; // base
+  if (/Pro\s*Max/i.test(device)) tier = 1;
+  else if (/Pro/i.test(device)) tier = 2;
+  else if (/Plus/i.test(device)) tier = 3;
+  else if (/mini/i.test(device)) tier = 6;
+  else if (/Max/i.test(device)) tier = 4; // XS Max и т.п.
+
+  return [major, tier, device];
 }
 
 export function groupCatalog(stubs: PositionStub[]): CatalogGroup[] {
@@ -487,9 +508,12 @@ export function groupCatalog(stubs: PositionStub[]): CatalogGroup[] {
   }
   return Array.from(map.entries())
     .sort((a, b) => {
-      const [ma, na] = deviceSortKey(a[0]);
-      const [mb, nb] = deviceSortKey(b[0]);
-      if (ma !== mb) return ma - mb;
+      const [ma, ta, na] = deviceSortKey(a[0]);
+      const [mb, tb, nb] = deviceSortKey(b[0]);
+      // Мажорная версия — по убыванию (новые сверху).
+      if (ma !== mb) return mb - ma;
+      // Внутри одной версии — Pro Max сверху, базовая в середине, mini внизу.
+      if (ta !== tb) return ta - tb;
       return na.localeCompare(nb, "ru");
     })
     .map(([device, positions]) => ({ device, positions }));
