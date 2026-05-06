@@ -4,6 +4,12 @@ import { useMemo, useState } from "react";
 import { Search, Plus, ChevronDown, Smartphone } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
+import {
+  CatalogFiltersBar,
+  EMPTY_FILTERS,
+  applyFilters,
+  type CatalogFilters,
+} from "./catalog-filters";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -14,24 +20,31 @@ type Props = {
 
 export function CatalogNav({ positions, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  const groups = useMemo(() => {
+  const visible = useMemo(() => {
+    const afterFilters = applyFilters(positions, filters);
     const q = query.trim().toLowerCase();
-    const filtered = q
-      ? positions.filter((p) =>
+    return q
+      ? afterFilters.filter((p) =>
           [p.device, p.category, p.variant, p.code]
             .filter(Boolean)
             .join(" ")
             .toLowerCase()
             .includes(q),
         )
-      : positions;
-    return groupCatalog(filtered);
-  }, [positions, query]);
+      : afterFilters;
+  }, [positions, filters, query]);
+
+  const groups = useMemo(() => groupCatalog(visible), [visible]);
+
+  const totalActiveFilters =
+    filters.generations.size + filters.models.size + filters.services.size;
+  const filterActive = totalActiveFilters > 0 || query.trim().length > 0;
 
   return (
-    <aside className="hidden w-72 shrink-0 lg:block">
+    <aside className="hidden w-80 shrink-0 lg:block">
       <div className="sticky top-6 flex flex-col gap-3 rounded-2xl border border-border bg-card/40 p-3">
         <div className="flex items-center justify-between px-1 pt-1">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -47,6 +60,12 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
           </button>
         </div>
 
+        <CatalogFiltersBar
+          positions={positions}
+          filters={filters}
+          onChange={setFilters}
+        />
+
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -58,7 +77,7 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
           />
         </div>
 
-        <nav className="-mr-1 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+        <nav className="-mr-1 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
           {groups.length === 0 && (
             <div className="px-2 py-6 text-center text-xs text-muted-foreground">
               Ничего не найдено
@@ -67,8 +86,8 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
 
           <ul className="flex flex-col gap-3">
             {groups.map((group) => {
-              // Поисковой запрос автораскрывает все группы.
-              const isCollapsed = query
+              // При активном поиске или фильтрах — раскрываем группы автоматически.
+              const isCollapsed = filterActive
                 ? false
                 : (collapsed[group.device] ?? true);
               const byCategory = new Map<string, PositionStub[]>();
@@ -186,9 +205,9 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
         </nav>
 
         <div className="mt-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
-          {positions.length} позиций из{" "}
-          <span className="font-mono text-foreground">ПРАЙС_ЛИСТ</span> ·{" "}
-          <span className="font-mono text-foreground">БД_УСЛУГИ_РО</span>
+          {visible.length.toLocaleString("ru-RU")} из{" "}
+          {positions.length.toLocaleString("ru-RU")} позиций ·{" "}
+          <span className="font-mono text-foreground">ПРАЙС_ЛИСТ</span>
         </div>
       </div>
     </aside>

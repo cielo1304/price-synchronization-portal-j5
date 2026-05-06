@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Menu, X } from "lucide-react";
-import type { Cell, PositionStub } from "@/lib/portal-types";
+import type { Cell, Position, PositionStub } from "@/lib/portal-types";
 import { getPositionById } from "@/lib/portal-catalog";
+import { useOverride } from "@/lib/portal-overrides";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
 import { PipelineStage } from "./pipeline-stage";
@@ -24,12 +25,24 @@ export function PortalShell({ index, defaultPositionId }: Props) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Полная позиция строится лениво только для активного id.
-  const position = useMemo(
+  const basePosition = useMemo(
     () =>
       getPositionById(selectedPositionId) ??
       (index[0] ? getPositionById(index[0].id) : null),
     [selectedPositionId, index],
   );
+
+  // Поверх данных портала накладываются ручные правки пользователя.
+  const override = useOverride(basePosition?.id ?? "");
+  const position: Position | null = useMemo(() => {
+    if (!basePosition) return null;
+    if (!override) return basePosition;
+    return {
+      ...basePosition,
+      warranty: override.warranty ?? basePosition.warranty,
+      laborMinutes: override.laborMinutes ?? basePosition.laborMinutes,
+    };
+  }, [basePosition, override]);
 
   const allCells = useMemo(
     () => (position ? position.stages.flatMap((s) => s.cells) : []),
