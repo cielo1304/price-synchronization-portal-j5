@@ -3,8 +3,13 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, Menu, X } from "lucide-react";
 import type { Cell, Position, PositionStub } from "@/lib/portal-types";
-import { getPositionById } from "@/lib/portal-catalog";
+import {
+  getPositionById,
+  getCustomPosition,
+  customStubsFromModels,
+} from "@/lib/portal-catalog";
 import { useOverride } from "@/lib/portal-overrides";
+import { useCustomModels } from "@/lib/portal-custom-models";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
 import { PipelineStage } from "./pipeline-stage";
@@ -24,13 +29,28 @@ export function PortalShell({ index, defaultPositionId }: Props) {
   );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Пользовательские модели (новый iPhone 18 и т.п.) — реактивно из localStorage.
+  const customModels = useCustomModels();
+
+  // Полный каталог = базовый + пользовательские модели.
+  const fullIndex = useMemo(() => {
+    const customStubs = customStubsFromModels(customModels);
+    return customStubs.length > 0 ? [...customStubs, ...index] : index;
+  }, [index, customModels]);
+
   // Полная позиция строится лениво только для активного id.
-  const basePosition = useMemo(
-    () =>
+  const basePosition = useMemo(() => {
+    if (selectedPositionId.startsWith("custom.")) {
+      return (
+        getCustomPosition(customModels, selectedPositionId) ??
+        getPositionById(index[0]?.id ?? "")
+      );
+    }
+    return (
       getPositionById(selectedPositionId) ??
-      (index[0] ? getPositionById(index[0].id) : null),
-    [selectedPositionId, index],
-  );
+      (index[0] ? getPositionById(index[0].id) : null)
+    );
+  }, [selectedPositionId, index, customModels]);
 
   // Поверх данных портала накладываются ручные правки пользователя.
   const override = useOverride(basePosition?.id ?? "");
@@ -60,7 +80,9 @@ export function PortalShell({ index, defaultPositionId }: Props) {
 
   const handleSelectPosition = (id: string) => {
     setSelectedPositionId(id);
-    const next = getPositionById(id);
+    const next = id.startsWith("custom.")
+      ? getCustomPosition(customModels, id)
+      : getPositionById(id);
     const fa =
       next?.stages.flatMap((s) => s.cells).find((c) => c.isFinal)?.address ??
       null;
@@ -110,7 +132,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
         </div>
         <div className="hidden items-center gap-3 text-xs text-muted-foreground md:flex">
           <span>
-            {index.length.toLocaleString("ru-RU")} позиций
+            {fullIndex.length.toLocaleString("ru-RU")} позиций
           </span>
           <span className="rounded-full border border-border bg-card px-2 py-0.5 font-mono">
             данные из вашей таблицы
@@ -120,7 +142,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
 
       <div className="flex gap-6">
         <CatalogNav
-          positions={index}
+          positions={fullIndex}
           selectedId={selectedPositionId}
           onSelect={handleSelectPosition}
         />
@@ -135,7 +157,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
               onClick={(e) => e.stopPropagation()}
             >
               <MobileCatalog
-                positions={index}
+                positions={fullIndex}
                 selectedId={selectedPositionId}
                 onSelect={handleSelectPosition}
               />

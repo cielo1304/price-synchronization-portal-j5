@@ -5,6 +5,7 @@ import type {
   PositionStub,
   Stage,
 } from "./portal-types";
+import type { CustomModel, CustomService } from "./portal-custom-models";
 import rawPositions from "./portal-positions.json";
 
 /**
@@ -512,6 +513,292 @@ function deviceSortKey(device: string): [number, number, string] {
   else if (/Max/i.test(device)) tier = 1;
 
   return [major, tier, device];
+}
+
+// ── Пользовательские модели ────────────────────────────────────────────
+
+/** ID позиции пользовательской модели: `custom.<modelId>.<serviceIdx>` */
+export function customPositionId(modelId: string, serviceIdx: number): string {
+  return `custom.${modelId}.${serviceIdx}`;
+}
+
+/** Извлекает шаблоны услуг из существующей модели для копирования */
+export function extractServiceTemplates(device: string): CustomService[] {
+  const stubs = CATALOG_INDEX.filter((s) => s.device === device);
+  return stubs.map((stub): CustomService => {
+    const pos = getPositionById(stub.id);
+    const hasPart = !!pos?.stages.find((s) => s.id === "sources");
+    return {
+      serviceName: pos?.serviceName ?? `${stub.category} — ${stub.variant}`,
+      category: stub.category,
+      variant: stub.variant,
+      hasPart,
+      warrantyDays: parseWarrantyDays(stub.warranty),
+      laborDuration: pos && pos.laborMinutes ? `${pos.laborMinutes} мин` : null,
+    };
+  });
+}
+
+/** Лёгкие stubs для всех услуг пользовательских моделей */
+export function customStubsFromModels(models: CustomModel[]): PositionStub[] {
+  const out: PositionStub[] = [];
+  for (const m of models) {
+    m.services.forEach((s, i) => {
+      out.push({
+        id: customPositionId(m.id, i),
+        device: m.device,
+        family: m.family,
+        category: s.category,
+        variant: s.variant,
+        code: null,
+        finalPrice: null,
+        warranty: s.warrantyDays ? `${s.warrantyDays} дней` : "—",
+        draft: true,
+      });
+    });
+  }
+  return out;
+}
+
+/** Строит полную Position для пользовательской модели — конвейер пустой */
+export function getCustomPosition(
+  models: CustomModel[],
+  id: string,
+): Position | null {
+  if (!id.startsWith("custom.")) return null;
+  const rest = id.slice("custom.".length);
+  const dot = rest.lastIndexOf(".");
+  if (dot < 0) return null;
+  const modelId = rest.slice(0, dot);
+  const idx = parseInt(rest.slice(dot + 1), 10);
+  if (Number.isNaN(idx)) return null;
+  const model = models.find((m) => m.id === modelId);
+  if (!model) return null;
+  const svc = model.services[idx];
+  if (!svc) return null;
+  return buildBlankPosition(model, svc, id);
+}
+
+function buildBlankPosition(
+  model: CustomModel,
+  svc: CustomService,
+  id: string,
+): Position {
+  const stages: Stage[] = [];
+  const hasPart = svc.hasPart;
+
+  if (hasPart) {
+    stages.push({
+      id: "sources",
+      title: "Источники цен",
+      subtitle: "Добавьте парсеры поставщиков",
+      canAdd: true,
+      cells: [
+        {
+          address: `${id}.part.sources.icomponents`,
+          label: "iComponents",
+          kind: "source",
+          value: null,
+          unit: "₽",
+          source: "парсер: iComponents",
+          note: "Введите URL парсера или установите цену вручную",
+        },
+        {
+          address: `${id}.part.sources.moslcd`,
+          label: "MOS-LCD",
+          kind: "source",
+          value: null,
+          unit: "₽",
+          source: "парсер: MOS-LCD",
+          note: "Введите URL парсера или установите цену вручную",
+        },
+      ],
+    });
+
+    stages.push({
+      id: "purchase",
+      title: "Закупочная",
+      subtitle: "Берём максимум, чтобы не уйти в минус",
+      cells: [
+        {
+          address: `${id}.part.purchase_price`,
+          label: "Закупка",
+          kind: "auto",
+          value: null,
+          unit: "₽",
+          formula: "MAX(sources)",
+          dependsOn: [
+            `${id}.part.sources.icomponents`,
+            `${id}.part.sources.moslcd`,
+          ],
+          note: "Заполнится автоматически после ввода источников",
+        },
+      ],
+    });
+
+    stages.push({
+      id: "markup",
+      title: "Наценка",
+      subtitle: "Сколько добавляем сверху",
+      cells: [
+        {
+          address: `${id}.part.markup_pct`,
+          label: "Наценка",
+          kind: "manual",
+          value: null,
+          unit: "%",
+          source: "Введите вручную",
+          note: "Например, 15 — это +15% к закупке",
+        },
+      ],
+    });
+
+    stages.push({
+      id: "part_retail",
+      title: "Цена запчасти",
+      subtitle: "Округляется к ближайшим 50 ₽",
+      cells: [
+        {
+          address: `${id}.part.retail_price`,
+          label: "Розница запчасти",
+          kind: "formula",
+          value: null,
+          unit: "₽",
+          formula: "MROUND(закупка × (1 + наценка/100); 50)",
+          dependsOn: [`${id}.part.purchase_price`, `${id}.part.markup_pct`],
+          note: "Заполнится автоматически",
+        },
+      ],
+    });
+  }
+
+  stages.push({
+    id: "labor",
+    title: "Работа",
+    subtitle: hasPart ? "Стоимость замены" : "Стоимость работы",
+    cells: [
+      {
+        address: `${id}.labor.price`,
+        label: "Стоимость работы",
+        kind: "manual",
+        value: null,
+        unit: "₽",
+        source: "Введите вручную",
+        note: "Попадёт в БД_УСЛУГИ_РО колонка P",
+      },
+    ],
+  });
+
+  stages.push({
+    id: "final",
+    title: "Конечная цена",
+    subtitle: hasPart ? "Запчасть + работа" : "Только работа",
+    cells: [
+      {
+        address: `${id}.service.final_price`,
+        label: "Цена услуги",
+        kind: "formula",
+        value: null,
+        unit: "₽",
+        formula: hasPart
+          ? "part.retail_price + labor.price"
+          : "labor.price",
+        dependsOn: hasPart
+          ? [`${id}.part.retail_price`, `${id}.labor.price`]
+          : [`${id}.labor.price`],
+        note: "Заполнится после ввода всех данных выше",
+        isFinal: true,
+      },
+    ],
+  });
+
+  const outputs: Output[] = [
+    {
+      id: "site",
+      name: "maxmobiles.ru",
+      description: "Карточка услуги на сайте",
+      status: "pending",
+      lastSyncedAt: "ожидает заполнения",
+      fields: [
+        {
+          label: "Цена",
+          fromAddress: `${id}.service.final_price`,
+          value: 0,
+          unit: "₽",
+        },
+      ],
+    },
+    {
+      id: "moysklad",
+      name: "МойСклад",
+      description: "Карточка товара/услуги",
+      status: "pending",
+      lastSyncedAt: "ожидает заполнения",
+      fields: [
+        {
+          label: "Цена продажи",
+          fromAddress: `${id}.service.final_price`,
+          value: 0,
+          unit: "₽",
+        },
+      ],
+    },
+    {
+      id: "remonline",
+      name: "Ремонлайн",
+      description: hasPart ? "Запчасть + работа отдельно" : "Только работа",
+      status: "pending",
+      lastSyncedAt: "ожидает заполнения",
+      fields: hasPart
+        ? [
+            {
+              label: "Закупочная запчасти",
+              fromAddress: `${id}.part.purchase_price`,
+              value: 0,
+              unit: "₽",
+            },
+            {
+              label: "Розница запчасти",
+              fromAddress: `${id}.part.retail_price`,
+              value: 0,
+              unit: "₽",
+            },
+            {
+              label: "Работа",
+              fromAddress: `${id}.labor.price`,
+              value: 0,
+              unit: "₽",
+            },
+          ]
+        : [
+            {
+              label: "Работа",
+              fromAddress: `${id}.labor.price`,
+              value: 0,
+              unit: "₽",
+            },
+          ],
+    },
+  ];
+
+  return {
+    id,
+    device: model.device,
+    serviceName: svc.serviceName,
+    category: svc.category,
+    variant: svc.variant,
+    code: "—",
+    warranty: svc.warrantyDays ? `${svc.warrantyDays} дней` : "—",
+    laborMinutes: parseMinutes(svc.laborDuration),
+    stages,
+    outputs,
+    draft: true,
+  };
+}
+
+function parseWarrantyDays(s: string): number | null {
+  const m = s.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 export function groupCatalog(stubs: PositionStub[]): CatalogGroup[] {

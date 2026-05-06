@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Plus, ChevronDown, Smartphone } from "lucide-react";
+import { Search, Plus, ChevronDown, Smartphone, Sparkles } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
 import {
@@ -10,6 +10,7 @@ import {
   applyFilters,
   type CatalogFilters,
 } from "./catalog-filters";
+import { AddModelDialog } from "./add-model-dialog";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export function CatalogNav({ positions, selectedId, onSelect }: Props) {
+  const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -52,11 +54,13 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
           </div>
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground transition hover:border-foreground hover:text-foreground"
-            aria-label="Создать позицию"
-            title="Создать позицию"
+            onClick={() => setAddOpen(true)}
+            className="flex h-7 items-center gap-1 rounded-md border border-dashed border-border px-2 text-[11px] font-medium text-muted-foreground transition hover:border-foreground hover:text-foreground"
+            aria-label="Добавить модель"
+            title="Добавить модель"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-3 w-3" />
+            Модель
           </button>
         </div>
 
@@ -96,6 +100,10 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                   byCategory.set(p.category, []);
                 byCategory.get(p.category)!.push(p);
               }
+              // Все позиции одного устройства либо все базовые, либо все кастомные
+              const isCustomDevice = group.positions[0]?.id.startsWith(
+                "custom.",
+              );
               return (
                 <li key={group.device}>
                   <button
@@ -109,8 +117,21 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                     className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-medium text-foreground/80 transition hover:bg-muted/60"
                   >
                     <span className="flex items-center gap-2">
-                      <Smartphone className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Smartphone
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          isCustomDevice
+                            ? "text-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      />
                       {group.device}
+                      {isCustomDevice && (
+                        <span className="flex items-center gap-1 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-foreground">
+                          <Sparkles className="h-2.5 w-2.5" />
+                          новая
+                        </span>
+                      )}
                       <span className="text-muted-foreground">
                         · {group.positions.length}
                       </span>
@@ -210,6 +231,15 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
           <span className="font-mono text-foreground">ПРАЙС_ЛИСТ</span>
         </div>
       </div>
+
+      <AddModelDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        positions={positions}
+        onCreated={(firstId) => {
+          if (firstId) onSelect(firstId);
+        }}
+      />
     </aside>
   );
 }
