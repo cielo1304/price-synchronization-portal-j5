@@ -2,8 +2,10 @@ import type { Cell, Output, Position, Stage } from "./portal-types";
 
 // Фабрика создаёт Position из простых параметров.
 // Цифры ниже — РЕАЛЬНЫЕ данные из вашей Google Sheets:
-//   ПРАЙС_ЛИСТ, БД_УСЛУГИ_РО, БД_ЗАПЧАСТИ, РЕМОНТ_ЯБЛОК, МАТРИЦА_СТОИМОСТИ_РАБОТ.
-// У каждой ячейки сохранён sheetRef — точный адрес в Google-таблице.
+//   ПРАЙС_ЛИСТ, БД_УСЛУГИ_РО (колонка P), БД_ЗАПЧАСТИ, РЕМОНТ_ЯБЛОК.
+// Источник истины для стоимости работы — БД_УСЛУГИ_РО колонка P.
+// Лист МАТРИЦА_СТОИМОСТИ_РАБОТ намеренно не используется — это задел
+// под будущие коэффициенты от базовой модели.
 
 type Source = {
   key: string;
@@ -34,9 +36,6 @@ type PositionInput = {
   laborPrice: number;
   /** Адрес работы в Google Sheets, например "БД_УСЛУГИ_РО!P916" */
   laborSheetRef?: string;
-  /** Рекомендованная цена работы из МАТРИЦЫ (если отличается — рассинхрон) */
-  matrixRecommendedLabor?: number;
-  matrixSheetRef?: string;
   /** Цена конкурента "Ремонт яблок" из РЕМОНТ_ЯБЛОК */
   competitorPrice?: number;
   competitorSheetRef?: string;
@@ -66,8 +65,6 @@ export function buildPosition(input: PositionInput): Position {
     roundStep = 50,
     laborPrice,
     laborSheetRef,
-    matrixRecommendedLabor,
-    matrixSheetRef,
     competitorPrice,
     competitorSheetRef,
     partRetailSheetRef,
@@ -174,41 +171,25 @@ export function buildPosition(input: PositionInput): Position {
     });
   }
 
-  // Стадия "Работа" — две ячейки рядом: рекомендация из матрицы + фактическая
-  const laborCells: Cell[] = [];
-  if (matrixRecommendedLabor !== undefined) {
-    laborCells.push({
-      address: `${id}.labor.matrix_recommended`,
-      label: "По матрице",
-      kind: "auto",
-      value: matrixRecommendedLabor,
-      unit: "₽",
-      formula: "МАТРИЦА × коэф. модели",
-      sheetRef: matrixSheetRef,
-      note:
-        matrixRecommendedLabor !== laborPrice
-          ? `Рассинхрон: фактическая ${laborPrice} ≠ рекомендация ${matrixRecommendedLabor}`
-          : "Совпадает с фактической",
-    });
-  }
-  laborCells.push({
-    address: `${id}.labor.price`,
-    label: "Стоимость работы",
-    kind: "manual",
-    value: laborPrice,
-    unit: "₽",
-    source: "Установлено вручную",
-    sheetRef: laborSheetRef,
-    note: laborSheetRef
-      ? `В Google Sheets живёт по адресу ${laborSheetRef}`
-      : undefined,
-  });
-
+  // Стадия "Работа" — фактическая стоимость работы из БД_УСЛУГИ_РО (колонка P)
   stages.push({
     id: "labor",
     title: "Работа",
     subtitle: hasPart ? "Стоимость замены" : "Стоимость работы",
-    cells: laborCells,
+    cells: [
+      {
+        address: `${id}.labor.price`,
+        label: "Стоимость работы",
+        kind: "manual",
+        value: laborPrice,
+        unit: "₽",
+        source: "БД_УСЛУГИ_РО · колонка P",
+        sheetRef: laborSheetRef,
+        note: laborSheetRef
+          ? `Источник истины: ${laborSheetRef}`
+          : undefined,
+      },
+    ],
   });
 
   // Стадия "Конкурент"
@@ -348,9 +329,8 @@ export function buildPosition(input: PositionInput): Position {
 // КАТАЛОГ. РЕАЛЬНЫЕ ДАННЫЕ из вашей Google-таблицы.
 // Источники:
 //   ПРАЙС_ЛИСТ строки 1166-1174 (iPhone 16 Дисплей варианты)
-//   БД_УСЛУГИ_РО P913-P920 (работы по iPhone 16)
+//   БД_УСЛУГИ_РО P913-P920 (работы по iPhone 16) — источник истины
 //   БД_ЗАПЧАСТИ строки 275-280 (запчасти на дисплей iPhone 16)
-//   МАТРИЦА_СТОИМОСТИ_РАБОТ строки 28-31 (рекомендованные цены работ)
 //   РЕМОНТ_ЯБЛОК (цены конкурента, подтянуты VLOOKUP)
 // =====================================================================
 
@@ -382,8 +362,6 @@ export const CATALOG: Position[] = [
     markupPct: 17.3,
     laborPrice: 7000,
     laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    matrixRecommendedLabor: 6100,
-    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
     competitorPrice: 20000,
     competitorSheetRef: "РЕМОНТ_ЯБЛОК",
     partRetailSheetRef: "БД_ЗАПЧАСТИ!P276",
@@ -411,8 +389,6 @@ export const CATALOG: Position[] = [
     markupPct: 18,
     laborPrice: 7000,
     laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    matrixRecommendedLabor: 6100,
-    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
     competitorPrice: 20000,
     competitorSheetRef: "РЕМОНТ_ЯБЛОК",
     partRetailSheetRef: "БД_ЗАПЧАСТИ!P277",
@@ -446,8 +422,6 @@ export const CATALOG: Position[] = [
     markupPct: 13,
     laborPrice: 7000,
     laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    matrixRecommendedLabor: 6100,
-    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
     competitorPrice: 20000,
     competitorSheetRef: "РЕМОНТ_ЯБЛОК",
     partRetailSheetRef: "БД_ЗАПЧАСТИ!P278",
@@ -467,8 +441,6 @@ export const CATALOG: Position[] = [
     sources: [],
     laborPrice: 7000,
     laborSheetRef: "БД_УСЛУГИ_РО!P916",
-    matrixRecommendedLabor: 6100,
-    matrixSheetRef: "МАТРИЦА_СТОИМОСТИ_РАБОТ!S28",
     competitorPrice: 15000,
     competitorSheetRef: "РЕМОНТ_ЯБЛОК",
     priceListSheetRef: "ПРАЙС_ЛИСТ!F1171",
