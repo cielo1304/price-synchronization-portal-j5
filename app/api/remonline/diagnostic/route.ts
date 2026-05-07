@@ -78,16 +78,29 @@ export async function GET() {
   // 1. Карта API без авторизации — должна отдать JSON со ссылками.
   await probe({ url: "https://api.roapp.io/", auth: "none" });
 
-  // 2. Главная проба: api-key как Bearer на api.remonline.app.
-  //    Это формат из официальных Python/PHP-примеров документации.
-  //    Никакого обмена на session-token не нужно — api-key самодостаточен.
-  const bearerCandidates = [
-    "https://api.remonline.app/warehouse/", // список складов
-    "https://api.remonline.app/services/", // список услуг
-    "https://api.remonline.app/branches", // список филиалов
-    "https://api.remonline.app/tasks", // список заявок (для контроля)
+  // 2. Подтверждённо рабочий список складов (просто для контроля).
+  await probe({
+    url: "https://api.remonline.app/warehouse/",
+    auth: "bearer",
+    bearerToken: apiKey,
+  });
+
+  // 3. Тестируем разные пути для товаров склада «Склад Сервис» (id=4489).
+  //    У РО в разных версиях бывало: /warehouse/goods/{id}/, /goods/{id}/,
+  //    /goods/?warehouse_id={id}, /products/?warehouse_id={id}.
+  //    Заодно проверяем path с слешем и без.
+  const goodsCandidates = [
+    "https://api.remonline.app/warehouse/goods/4489/",
+    "https://api.remonline.app/warehouse/goods/4489",
+    "https://api.remonline.app/warehouse/goods/?warehouse_id=4489",
+    "https://api.remonline.app/warehouse/4489/goods/",
+    "https://api.remonline.app/goods/4489/",
+    "https://api.remonline.app/goods/?warehouse_id=4489",
+    "https://api.remonline.app/products/?warehouse_id=4489",
+    "https://api.remonline.app/catalog/products/?warehouse_id=4489",
+    "https://api.remonline.app/catalog/?warehouse_id=4489",
   ];
-  for (const url of bearerCandidates) {
+  for (const url of goodsCandidates) {
     await probe({ url, auth: "bearer", bearerToken: apiKey });
   }
 
