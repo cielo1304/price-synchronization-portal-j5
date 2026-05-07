@@ -148,14 +148,14 @@ function parseMinutes(duration: string | null): number {
  *   • Диагностика (любая)
  *   • Чистка сеток динамиков и разъёма зарядки
  *   • Профилактика после воды
+ *   • Пылевлагозащита — восстановление
  */
 export function isPartExempt(serviceName: string, category?: string): boolean {
   const haystack = `${category ?? ""} ${serviceName}`.toLowerCase();
-  if (/^\s*диагностик/.test(haystack)) return true;
-  if (/диагностик/.test(haystack) && /^\s*диагностик/.test(serviceName.toLowerCase()))
-    return true;
+  if (/диагностик/.test(haystack)) return true;
   if (/чистк/.test(haystack)) return true;
   if (/профилактик/.test(haystack)) return true;
+  if (/пыле\s*влаг/.test(haystack)) return true;
   return false;
 }
 
