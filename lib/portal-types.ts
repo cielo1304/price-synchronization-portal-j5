@@ -33,6 +33,8 @@ export type Cell = {
   isFinal?: boolean;
   /** Привязка к ячейке исходной Google-таблицы, например "БД_УСЛУГИ_РО!P916". */
   sheetRef?: string;
+  /** Жёлтое предупреждение поверх ячейки — на видном месте */
+  warning?: string;
 };
 
 export type Stage = {
@@ -42,6 +44,8 @@ export type Stage = {
   cells: Cell[];
   /** Можно ли добавлять ячейки через "+" */
   canAdd?: boolean;
+  /** Стадия-заглушка: место зарезервировано, но реально не используется */
+  placeholder?: boolean;
 };
 
 export type Output = {

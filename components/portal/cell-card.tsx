@@ -2,7 +2,15 @@
 
 import { cn } from "@/lib/utils";
 import type { Cell } from "@/lib/portal-types";
-import { Database, Sigma, Pencil, Cpu, ArrowDownToLine, FileSpreadsheet } from "lucide-react";
+import {
+  Database,
+  Sigma,
+  Pencil,
+  Cpu,
+  ArrowDownToLine,
+  FileSpreadsheet,
+  AlertTriangle,
+} from "lucide-react";
 
 const KIND_META: Record<
   Cell["kind"],
@@ -88,6 +96,13 @@ export function CellCard({ cell, selected, onSelect }: Props) {
           </div>
         )}
       </div>
+
+      {cell.warning && (
+        <div className="flex items-start gap-2 border-t border-amber-500/30 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-900">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="text-pretty text-left">{cell.warning}</span>
+        </div>
+      )}
 
       <div className="border-t border-border/60 px-3 py-1.5">
         <div className="truncate font-mono text-[10px] text-muted-foreground">

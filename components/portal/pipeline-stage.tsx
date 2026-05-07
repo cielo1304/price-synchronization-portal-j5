@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import type { Cell, Stage } from "@/lib/portal-types";
 import { CellCard } from "./cell-card";
+import { cn } from "@/lib/utils";
 
 type Props = {
   stage: Stage;
@@ -17,8 +18,17 @@ export function PipelineStage({
   selectedAddress,
   onSelectCell,
 }: Props) {
+  // Стадия-заглушка: место зарезервировано в шаблоне, но запчасть не используется.
+  // Делаем её приглушённой, чтобы взгляд не цеплялся, но структура оставалась видна.
+  const isPlaceholder = stage.placeholder;
+
   return (
-    <div className="flex w-64 shrink-0 flex-col gap-3">
+    <div
+      className={cn(
+        "flex w-64 shrink-0 flex-col gap-3 transition-opacity",
+        isPlaceholder && "opacity-50",
+      )}
+    >
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-xs text-muted-foreground">
           {String(index + 1).padStart(2, "0")}
@@ -41,7 +51,7 @@ export function PipelineStage({
           />
         ))}
 
-        {stage.canAdd && (
+        {stage.canAdd && !isPlaceholder && (
           <button
             type="button"
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-3 py-3 text-xs text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"

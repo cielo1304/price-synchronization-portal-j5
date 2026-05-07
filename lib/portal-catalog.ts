@@ -288,6 +288,72 @@ function recordToPosition(rec: RawSource): Position {
         },
       ],
     });
+  } else {
+    // Услуга без запчасти — оставляем место в шаблоне как 4 placeholder-стадии,
+    // чтобы визуально структура была одинаковой для всех услуг.
+    stages.push(
+      {
+        id: "sources",
+        title: "Источники цен",
+        subtitle: "Запчасть не используется",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.sources.placeholder`,
+            label: "Источников нет",
+            kind: "source",
+            value: null,
+            note: "Для этой услуги запчасть не предусмотрена",
+          },
+        ],
+      },
+      {
+        id: "purchase",
+        title: "Закупочная",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.purchase_price`,
+            label: "Закупка",
+            kind: "auto",
+            value: null,
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+      {
+        id: "markup",
+        title: "Наценка",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.markup_pct`,
+            label: "Наценка",
+            kind: "manual",
+            value: null,
+            unit: "%",
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+      {
+        id: "part_retail",
+        title: "Цена запчасти",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.retail_price`,
+            label: "Розница запчасти",
+            kind: "formula",
+            value: null,
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+    );
   }
 
   // 2) Работа
@@ -355,6 +421,9 @@ function recordToPosition(rec: RawSource): Position {
         sheetRef: rec.priceListSheetRef,
         note: `В Google Sheets: ${rec.priceListSheetRef} (формула F)`,
         isFinal: true,
+        warning: hasPart
+          ? undefined
+          : "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!",
       },
     ],
   });
@@ -670,6 +739,71 @@ function buildBlankPosition(
         },
       ],
     });
+  } else {
+    // Услуга без запчасти — placeholder-стадии для единообразия структуры
+    stages.push(
+      {
+        id: "sources",
+        title: "Источники цен",
+        subtitle: "Запчасть не используется",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.sources.placeholder`,
+            label: "Источников нет",
+            kind: "source",
+            value: null,
+            note: "Для этой услуги запчасть не предусмотрена",
+          },
+        ],
+      },
+      {
+        id: "purchase",
+        title: "Закупочная",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.purchase_price`,
+            label: "Закупка",
+            kind: "auto",
+            value: null,
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+      {
+        id: "markup",
+        title: "Наценка",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.markup_pct`,
+            label: "Наценка",
+            kind: "manual",
+            value: null,
+            unit: "%",
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+      {
+        id: "part_retail",
+        title: "Цена запчасти",
+        subtitle: "—",
+        placeholder: true,
+        cells: [
+          {
+            address: `${id}.part.retail_price`,
+            label: "Розница запчасти",
+            kind: "formula",
+            value: null,
+            note: "Запчасть не используется",
+          },
+        ],
+      },
+    );
   }
 
   stages.push({
@@ -708,6 +842,9 @@ function buildBlankPosition(
           : [`${id}.labor.price`],
         note: "Заполнится после ввода всех данных выше",
         isFinal: true,
+        warning: hasPart
+          ? undefined
+          : "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!",
       },
     ],
   });
