@@ -176,15 +176,19 @@ export async function fetchAllServices(): Promise<RoService[]> {
 }
 
 /**
- * Постраничный список товаров склада. GET /warehouse/goods/{warehouse_id}/
- * Без указания склада эндпоинта нет — товары всегда привязаны к складу.
+ * Постраничный список товаров склада. GET /warehouse/goods/{warehouse_id}
+ *
+ * ВАЖНО: путь должен быть БЕЗ trailing slash. У роутера РО на этом эндпоинте
+ * `/warehouse/goods/{id}/` (со слешем) возвращает 404, а `/warehouse/goods/{id}`
+ * (без слеша) — 200. Это отличается от `/warehouse/`, где слеш обязателен.
+ * Подтверждено диагностическим прогоном.
  */
 export async function listProducts(
   warehouseId: number,
   opts: { page?: number; search?: string } = {},
 ): Promise<{ items: RoProduct[]; page: number; count: number }> {
   const json = await apiGet<V2List<RoProduct>>(
-    `/warehouse/goods/${warehouseId}/`,
+    `/warehouse/goods/${warehouseId}`,
     {
       page: opts.page,
       search: opts.search,
@@ -212,12 +216,14 @@ export async function fetchAllProducts(
 }
 
 /**
- * Остатки по складу. GET /warehouse/goods/{warehouse_id}/?search=<title>
+ * Остатки по складу. GET /warehouse/goods/{warehouse_id}?search=<title>
  *
  * У РО нет отдельного эндпоинта `/stock` — остаток лежит в самом объекте
  * товара (поле `residue` или `quantity`), и эндпоинт списка товаров склада
  * принимает параметр `search`, который ищет по части названия. Этого
  * достаточно для точечного запроса по нормализованному имени запчасти.
+ *
+ * ВАЖНО: путь без trailing slash, см. комментарий у listProducts.
  */
 export async function getStock(
   warehouseId: number,
@@ -229,7 +235,7 @@ export async function getStock(
   // На случай совпадений по нескольким товарам — забираем все страницы
   for (let page = 1; page <= 10; page++) {
     const json = await apiGet<V2List<RoStockItem>>(
-      `/warehouse/goods/${warehouseId}/`,
+      `/warehouse/goods/${warehouseId}`,
       { page, search },
     );
     const { items } = unwrapList(json);
