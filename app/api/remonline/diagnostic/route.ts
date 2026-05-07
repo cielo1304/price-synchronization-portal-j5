@@ -27,21 +27,32 @@ export async function GET() {
     );
   }
 
-  const probes: Array<{ url: string; auth: "bearer" | "none" }> = [
-    // Карты API — должны отдавать JSON со ссылками без всякой авторизации
+  const probes: Array<{
+    url: string;
+    auth: "bearer" | "query-token" | "none";
+    method?: "GET" | "POST";
+  }> = [
+    // Карты API — должны отдавать JSON со ссылками без авторизации
     { url: "https://api.roapp.io/", auth: "none" },
     { url: "https://api.roapp.io/v2/", auth: "none" },
 
-    // Список складов на различных вариантах префикса и пути
+    // v2 API на api.roapp.io со списком складов и проч.
     { url: "https://api.roapp.io/v2/warehouse/", auth: "bearer" },
     { url: "https://api.roapp.io/v2/warehouses/", auth: "bearer" },
-    { url: "https://api.roapp.io/api/v2/warehouse/", auth: "bearer" },
-    { url: "https://api.roapp.io/api/v2/warehouses/", auth: "bearer" },
-
-    // Список услуг, чтобы по нему понять — может, авторизация работает,
-    // но конкретно warehouse-эндпоинт у этого тарифа закрыт.
     { url: "https://api.roapp.io/v2/services/", auth: "bearer" },
     { url: "https://api.roapp.io/v2/products/", auth: "bearer" },
+
+    // v1 API на api.remonline.app (старый, ?token=… в query):
+    // если там вернётся 200 — у вас api-key v1, и нужно использовать v1-клиент.
+    {
+      url: `https://api.remonline.app/token/new?api_key=${encodeURIComponent(token)}`,
+      auth: "none",
+      method: "POST",
+    },
+    {
+      url: `https://api.remonline.app/warehouse/warehouses/?token=${encodeURIComponent(token)}`,
+      auth: "none",
+    },
   ];
 
   const results = [];
@@ -56,6 +67,7 @@ export async function GET() {
         headers.Authorization = `Bearer ${token}`;
       }
       const res = await fetch(probe.url, {
+        method: probe.method ?? "GET",
         headers,
         cache: "no-store",
         signal: ctrl.signal,
