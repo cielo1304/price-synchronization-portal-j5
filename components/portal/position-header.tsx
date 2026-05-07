@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   Smartphone,
@@ -9,6 +9,8 @@ import {
   RotateCcw,
   Check,
   AlertTriangle,
+  CircleAlert,
+  CheckCircle2,
 } from "lucide-react";
 import type { Position } from "@/lib/portal-types";
 import {
@@ -16,6 +18,7 @@ import {
   clearOverride,
   useHasOverride,
 } from "@/lib/portal-overrides";
+import { useRemonline } from "@/lib/remonline/context";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -28,6 +31,40 @@ export function PositionHeader({ position }: Props) {
     .find((c) => c.isFinal);
 
   const hasOverride = useHasOverride(position.id);
+
+  const { services, products } = useRemonline();
+  // Считаем расхождения по ячейкам этой позиции — для бейджа в шапке.
+  const roSummary = useMemo(() => {
+    if (!services && !products)
+      return { loaded: false, mismatches: 0, total: 0 };
+    let total = 0;
+    let mismatches = 0;
+    for (const stage of position.stages) {
+      for (const cell of stage.cells) {
+        if (!cell.roMatch) continue;
+        const m = cell.roMatch;
+        const isService =
+          m.kind === "service-price" || m.kind === "service-duration";
+        const snap = isService ? services : products;
+        if (!snap) continue;
+        const found = snap.items[m.key];
+        if (!found) continue;
+        total++;
+        let remote: number | null = null;
+        if (m.kind === "service-price")
+          remote = (found as { price: number | null }).price;
+        else if (m.kind === "service-duration")
+          remote = (found as { duration: number | null }).duration;
+        else if (m.kind === "part-purchase")
+          remote = (found as { purchase: number | null }).purchase;
+        else if (m.kind === "part-retail")
+          remote = (found as { retail: number | null }).retail;
+        if (cell.value !== null && remote !== null && cell.value !== remote)
+          mismatches++;
+      }
+    }
+    return { loaded: true, mismatches, total };
+  }, [position, services, products]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -94,6 +131,33 @@ export function PositionHeader({ position }: Props) {
             {position.draft && (
               <span className="rounded-full border border-dashed border-foreground/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground/70">
                 черновик
+              </span>
+            )}
+
+            {roSummary.loaded && roSummary.total > 0 && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  roSummary.mismatches > 0
+                    ? "bg-rose-100 text-rose-700"
+                    : "bg-money-muted text-money",
+                )}
+                title={
+                  roSummary.mismatches > 0
+                    ? `Расходится с РО ${roSummary.mismatches} из ${roSummary.total} ячеек`
+                    : "Все ячейки в синхроне с Remonline"
+                }
+              >
+                {roSummary.mismatches > 0 ? (
+                  <>
+                    <CircleAlert className="h-3 w-3" />
+                    {roSummary.mismatches} c РО
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />в синхроне
+                  </>
+                )}
               </span>
             )}
           </div>

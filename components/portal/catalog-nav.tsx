@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Plus, ChevronDown, Smartphone, Sparkles } from "lucide-react";
+import {
+  Search,
+  Plus,
+  ChevronDown,
+  Smartphone,
+  Sparkles,
+  CircleAlert,
+} from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
 import {
@@ -11,6 +18,7 @@ import {
   type CatalogFilters,
 } from "./catalog-filters";
 import { AddModelDialog } from "./add-model-dialog";
+import { useRemonline } from "@/lib/remonline/context";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -24,6 +32,7 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { conflictByDevice } = useRemonline();
 
   const visible = useMemo(() => {
     const afterFilters = applyFilters(positions, filters);
@@ -104,6 +113,7 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
               const isCustomDevice = group.positions[0]?.id.startsWith(
                 "custom.",
               );
+              const conflicts = conflictByDevice.get(group.device);
               return (
                 <li key={group.device}>
                   <button
@@ -136,12 +146,23 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                         · {group.positions.length}
                       </span>
                     </span>
-                    <ChevronDown
-                      className={cn(
-                        "h-3.5 w-3.5 text-muted-foreground transition-transform",
-                        isCollapsed && "-rotate-90",
+                    <span className="flex items-center gap-1.5">
+                      {conflicts && conflicts.total > 0 && (
+                        <span
+                          className="flex items-center gap-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-rose-700"
+                          title={`Расхождений с РО: работ ${conflicts.laborConflicts}, запчастей ${conflicts.partConflicts}`}
+                        >
+                          <CircleAlert className="h-2.5 w-2.5" />
+                          {conflicts.total}
+                        </span>
                       )}
-                    />
+                      <ChevronDown
+                        className={cn(
+                          "h-3.5 w-3.5 text-muted-foreground transition-transform",
+                          isCollapsed && "-rotate-90",
+                        )}
+                      />
+                    </span>
                   </button>
 
                   {!isCollapsed && (

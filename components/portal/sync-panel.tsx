@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   RefreshCw,
   CheckCircle2,
@@ -8,11 +8,13 @@ import {
   X,
   Loader2,
   Database,
-  ArrowRight,
-  Box,
   Wrench,
+  Box,
+  CircleAlert,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRemonline } from "@/lib/remonline/context";
 
 type TestResult = {
   ok: boolean;
@@ -22,40 +24,32 @@ type TestResult = {
   productsSample?: Array<{ id: number; title: string; article?: string | null }>;
 };
 
-type DryRunResult = {
-  ok: boolean;
-  error?: string;
-  warehouse?: { id: number; title: string };
-  stats?: {
-    portalPositions: number;
-    roServices: number;
-    roProducts: number;
-    inSync: number;
-    wouldUpdate: number;
-    missingInRo: number;
-    diffs: number;
-  };
-  diffs?: Array<{
-    positionId: string;
-    device: string;
-    service: string;
-    matchedService?: { id: number; title: string };
-    matchedProduct?: { id: number; title: string; residue?: number | null };
-    changes: Array<{
-      field: string;
-      portalValue: number | string | null;
-      remonlineValue: number | string | null;
-      action: "would_update" | "in_sync" | "missing_in_ro";
-    }>;
-  }>;
-};
-
 export function SyncPanel() {
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
-  const [running, setRunning] = useState(false);
-  const [dryRun, setDryRun] = useState<DryRunResult | null>(null);
+  const {
+    services,
+    products,
+    loadingServices,
+    loadingProducts,
+    errorServices,
+    errorProducts,
+    loadServices,
+    loadProducts,
+    conflictByDevice,
+  } = useRemonline();
+
+  // Общая сводка по всем устройствам
+  const totals = useMemo(() => {
+    let labor = 0;
+    let part = 0;
+    for (const v of conflictByDevice.values()) {
+      labor += v.laborConflicts;
+      part += v.partConflicts;
+    }
+    return { labor, part, devices: conflictByDevice.size };
+  }, [conflictByDevice]);
 
   const runTest = async () => {
     setTesting(true);
@@ -73,31 +67,30 @@ export function SyncPanel() {
     }
   };
 
-  const runDryRun = async () => {
-    setRunning(true);
-    setDryRun(null);
-    try {
-      const res = await fetch("/api/remonline/dry-run", { method: "POST" });
-      setDryRun(await res.json());
-    } catch (err) {
-      setDryRun({
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setRunning(false);
-    }
-  };
+  // Бейдж в шапке кнопки — суммарное число расхождений
+  const badge = totals.labor + totals.part;
+  const indicatorColor =
+    badge > 0 ? "bg-rose-500" : services || products ? "bg-emerald-500" : null;
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition hover:border-foreground/40"
+        className="relative flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground transition hover:border-foreground/40"
       >
         <RefreshCw className="h-3.5 w-3.5" />
         Синхронизация
+        {indicatorColor && (
+          <span
+            className={cn(
+              "ml-1 flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums text-white",
+              indicatorColor,
+            )}
+          >
+            {badge > 0 ? badge : "✓"}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -111,9 +104,12 @@ export function SyncPanel() {
           <aside className="relative ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-border bg-background shadow-2xl">
             <header className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
-                <h2 className="text-base font-semibold">Синхронизация с Remonline</h2>
+                <h2 className="text-base font-semibold">
+                  Синхронизация с Remonline
+                </h2>
                 <p className="text-xs text-muted-foreground">
-                  Сухой прогон — без записи. Только покажу разницу.
+                  Загрузите snapshot — портал покажет расхождения по каждой
+                  ячейке. Запись по кнопке.
                 </p>
               </div>
               <button
@@ -126,13 +122,13 @@ export function SyncPanel() {
             </header>
 
             <div className="flex-1 overflow-y-auto p-5">
-              <Section title="Шаг 1. Проверка подключения">
+              <Section title="Подключение">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={runTest}
                     disabled={testing}
-                    className="flex h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-xs font-medium text-background transition hover:bg-foreground/85 disabled:opacity-50"
+                    className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium transition hover:border-foreground/40 disabled:opacity-50"
                   >
                     {testing ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -141,97 +137,60 @@ export function SyncPanel() {
                     )}
                     {testing ? "Проверяю…" : "Проверить токен"}
                   </button>
+                  {test?.ok && (
+                    <span className="flex items-center gap-1 rounded-full border border-money/30 bg-money-muted px-2 py-1 text-[11px] font-medium text-money">
+                      <CheckCircle2 className="h-3 w-3" />
+                      OK · {test.warehouses?.length ?? 0} складов
+                    </span>
+                  )}
                 </div>
-                {test && (
-                  <div className="mt-3">
-                    {test.ok ? (
-                      <div className="rounded-lg border border-money/30 bg-money-muted px-4 py-3 text-sm">
-                        <div className="flex items-center gap-2 font-medium text-money">
-                          <CheckCircle2 className="h-4 w-4" />
-                          Подключение работает
-                        </div>
-                        <dl className="mt-2 space-y-1 text-xs text-foreground">
-                          <KV
-                            label="Складов"
-                            value={`${test.warehouses?.length ?? 0}`}
-                          />
-                          {test.warehouses?.[0] && (
-                            <KV
-                              label="Первый склад"
-                              value={`${test.warehouses[0].title} (id ${test.warehouses[0].id})`}
-                            />
-                          )}
-                          <KV
-                            label="Услуг в РО"
-                            value={`${test.servicesCount ?? 0}`}
-                          />
-                        </dl>
-                        {test.productsSample && test.productsSample.length > 0 && (
-                          <div className="mt-3 space-y-1 text-xs">
-                            <div className="text-muted-foreground">
-                              Пример товаров:
-                            </div>
-                            {test.productsSample.map((p) => (
-                              <div
-                                key={p.id}
-                                className="flex items-center gap-2 truncate font-mono text-[11px] text-foreground"
-                              >
-                                <Box className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                {p.title}
-                                {p.article && (
-                                  <span className="text-muted-foreground">
-                                    · {p.article}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <ErrorBox message={test.error ?? "Неизвестная ошибка"} />
-                    )}
-                  </div>
+                {test && !test.ok && (
+                  <ErrorBox message={test.error ?? "Неизвестная ошибка"} />
                 )}
               </Section>
 
               <div className="my-5 h-px bg-border" />
 
-              <Section title="Шаг 2. Сухой прогон по всем позициям">
+              <Section title="Snapshot">
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Портал тянет услуги и товары из РО, сопоставляет с
-                  каталогом по нормализованному наименованию и считает разницу.
-                  Запись в Remonline НЕ происходит.
+                  Каждая кнопка тянет полный список из РО и сравнивает с
+                  каталогом портала по нормализованному имени. Расхождения
+                  подсветятся красным восклицательным знаком прямо в позициях.
                 </p>
-                <button
-                  type="button"
-                  onClick={runDryRun}
-                  disabled={running || !test?.ok}
-                  className="flex h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-xs font-medium text-background transition hover:bg-foreground/85 disabled:opacity-50"
-                  title={
-                    test?.ok
-                      ? undefined
-                      : "Сначала пройдите проверку подключения"
-                  }
-                >
-                  {running ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  {running ? "Сравниваю…" : "Запустить сухой прогон"}
-                </button>
 
-                {dryRun && (
-                  <div className="mt-4">
-                    {dryRun.ok ? (
-                      <DryRunReport result={dryRun} />
-                    ) : (
-                      <ErrorBox message={dryRun.error ?? "Неизвестная ошибка"} />
-                    )}
-                  </div>
-                )}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <SnapshotButton
+                    label="Цены работ"
+                    icon={Wrench}
+                    loading={loadingServices}
+                    error={errorServices}
+                    snapshot={services}
+                    conflicts={totals.labor}
+                    onLoad={loadServices}
+                  />
+                  <SnapshotButton
+                    label="Цены запчастей"
+                    icon={Box}
+                    loading={loadingProducts}
+                    error={errorProducts}
+                    snapshot={products}
+                    warehouseTitle={products?.warehouse.title}
+                    conflicts={totals.part}
+                    onLoad={loadProducts}
+                  />
+                </div>
               </Section>
+
+              {(services || products) && (
+                <>
+                  <div className="my-5 h-px bg-border" />
+                  <Section title="Сводка по моделям">
+                    <DeviceConflictSummary
+                      conflictByDevice={conflictByDevice}
+                    />
+                  </Section>
+                </>
+              )}
             </div>
           </aside>
         </div>
@@ -255,18 +214,9 @@ function Section({
   );
 }
 
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-mono">{value}</dd>
-    </div>
-  );
-}
-
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+    <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-3 text-xs text-amber-900">
       <div className="flex items-center gap-2 font-medium">
         <AlertCircle className="h-4 w-4" />
         Ошибка
@@ -276,130 +226,169 @@ function ErrorBox({ message }: { message: string }) {
   );
 }
 
-function DryRunReport({ result }: { result: DryRunResult }) {
-  if (!result.stats) return null;
-  const s = result.stats;
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat label="Позиций в портале" value={s.portalPositions} />
-        <Stat label="Услуг в РО" value={s.roServices} />
-        <Stat label="Товаров в РО" value={s.roProducts} />
-        <Stat label="Будут обновлены" value={s.wouldUpdate} accent="flow" />
-      </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Склад</span>
-          <span className="font-mono">
-            {result.warehouse?.title} (id {result.warehouse?.id})
-          </span>
-        </div>
-      </div>
-
-      {result.diffs && result.diffs.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-foreground">
-            Разница ({result.diffs.length}
-            {s.diffs > 200 ? ", показаны первые 200" : ""})
-          </div>
-          {result.diffs.map((d) => (
-            <div
-              key={d.positionId}
-              className="rounded-lg border border-border bg-card p-3 text-xs"
-            >
-              <div className="mb-2 flex items-baseline justify-between gap-3">
-                <div className="font-medium">
-                  {d.device} · {d.service}
-                </div>
-                <div className="font-mono text-[10px] text-muted-foreground">
-                  {d.positionId.slice(0, 30)}…
-                </div>
-              </div>
-              <div className="mb-2 flex flex-wrap gap-2 text-[10px]">
-                {d.matchedService && (
-                  <span className="flex items-center gap-1 rounded-full bg-flow-muted px-2 py-0.5 font-mono text-flow">
-                    <Wrench className="h-2.5 w-2.5" />
-                    Услуга #{d.matchedService.id}
-                  </span>
-                )}
-                {d.matchedProduct && (
-                  <span className="flex items-center gap-1 rounded-full bg-flow-muted px-2 py-0.5 font-mono text-flow">
-                    <Box className="h-2.5 w-2.5" />
-                    Товар #{d.matchedProduct.id}
-                    {typeof d.matchedProduct.residue === "number" && (
-                      <span>· {d.matchedProduct.residue} шт</span>
-                    )}
-                  </span>
-                )}
-              </div>
-              <ul className="space-y-1">
-                {d.changes.map((c, i) => (
-                  <li
-                    key={i}
-                    className={cn(
-                      "flex items-center gap-2 rounded px-2 py-1 font-mono text-[11px]",
-                      c.action === "would_update" && "bg-flow-muted text-flow",
-                      c.action === "missing_in_ro" &&
-                        "bg-amber-50 text-amber-900",
-                      c.action === "in_sync" &&
-                        "bg-money-muted text-money",
-                    )}
-                  >
-                    <span className="min-w-[100px]">{c.field}</span>
-                    <span>{format(c.portalValue)}</span>
-                    <ArrowRight className="h-3 w-3 opacity-60" />
-                    <span>{format(c.remonlineValue)}</span>
-                    <span className="ml-auto text-[10px] uppercase tracking-wider opacity-70">
-                      {c.action === "would_update"
-                        ? "обновим"
-                        : c.action === "missing_in_ro"
-                          ? "нет в РО"
-                          : "ок"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Stat({
+function SnapshotButton({
   label,
-  value,
-  accent,
+  icon: Icon,
+  loading,
+  error,
+  snapshot,
+  warehouseTitle,
+  conflicts,
+  onLoad,
 }: {
   label: string;
-  value: number;
-  accent?: "flow";
+  icon: React.ComponentType<{ className?: string }>;
+  loading: boolean;
+  error: string | null;
+  snapshot: { takenAt: string; total: number } | null;
+  warehouseTitle?: string;
+  conflicts: number;
+  onLoad: () => void;
 }) {
+  const takenAtDelta = snapshot
+    ? formatDelta(new Date(snapshot.takenAt))
+    : null;
+
   return (
-    <div
-      className={cn(
-        "rounded-lg border bg-card px-3 py-2",
-        accent === "flow" ? "border-flow/40 bg-flow-muted" : "border-border",
-      )}
-    >
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "mt-0.5 text-lg font-semibold tabular-nums",
-          accent === "flow" && "text-flow",
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">{label}</span>
+        {snapshot && (
+          <span
+            className={cn(
+              "ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums",
+              conflicts > 0
+                ? "bg-rose-100 text-rose-700"
+                : "bg-money-muted text-money",
+            )}
+          >
+            {conflicts > 0 ? (
+              <>
+                <CircleAlert className="h-2.5 w-2.5" />
+                {conflicts} расхождений
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-2.5 w-2.5" />в синхроне
+              </>
+            )}
+          </span>
         )}
-      >
-        {value.toLocaleString("ru-RU")}
       </div>
+
+      {snapshot && (
+        <dl className="mt-3 space-y-1 text-[11px]">
+          <KV label="В РО" value={snapshot.total.toLocaleString("ru-RU")} />
+          {warehouseTitle && <KV label="Склад" value={warehouseTitle} />}
+          <KV
+            label="Загружено"
+            value={
+              <span className="flex items-center gap-1">
+                <Clock className="h-2.5 w-2.5" />
+                {takenAtDelta}
+              </span>
+            }
+          />
+        </dl>
+      )}
+
+      <button
+        type="button"
+        onClick={onLoad}
+        disabled={loading}
+        className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-lg bg-foreground text-xs font-medium text-background transition hover:bg-foreground/85 disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" />
+        )}
+        {loading
+          ? "Загружаю…"
+          : snapshot
+            ? "Обновить"
+            : `Проверить ${label.toLowerCase()}`}
+      </button>
+
+      {error && <ErrorBox message={error} />}
     </div>
   );
 }
 
-function format(v: number | string | null) {
-  if (v === null) return "—";
-  if (typeof v === "number") return v.toLocaleString("ru-RU");
-  return v;
+function DeviceConflictSummary({
+  conflictByDevice,
+}: {
+  conflictByDevice: Map<
+    string,
+    { laborConflicts: number; partConflicts: number; total: number }
+  >;
+}) {
+  const list = useMemo(() => {
+    return [...conflictByDevice.entries()]
+      .filter(([, v]) => v.total > 0)
+      .sort((a, b) => b[1].total - a[1].total);
+  }, [conflictByDevice]);
+
+  if (list.length === 0) {
+    return (
+      <div className="rounded-lg border border-money/30 bg-money-muted px-4 py-3 text-sm text-money">
+        <CheckCircle2 className="mr-2 inline h-4 w-4" />
+        Все цены в синхроне с Remonline.
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {list.map(([device, v]) => (
+        <li
+          key={device}
+          className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2 text-xs"
+        >
+          <span className="font-medium text-foreground">{device}</span>
+          <span className="flex items-center gap-2 text-rose-700">
+            {v.laborConflicts > 0 && (
+              <span className="flex items-center gap-1 font-mono">
+                <Wrench className="h-3 w-3" />
+                {v.laborConflicts}
+              </span>
+            )}
+            {v.partConflicts > 0 && (
+              <span className="flex items-center gap-1 font-mono">
+                <Box className="h-3 w-3" />
+                {v.partConflicts}
+              </span>
+            )}
+            <span className="rounded-full bg-rose-100 px-1.5 py-0.5 font-bold tabular-nums">
+              {v.total}
+            </span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function KV({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-muted-foreground">
+      <dt>{label}</dt>
+      <dd className="font-mono text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function formatDelta(d: Date): string {
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60) return "только что";
+  if (sec < 3600) return `${Math.floor(sec / 60)} мин назад`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} ч назад`;
+  return d.toLocaleString("ru-RU");
 }

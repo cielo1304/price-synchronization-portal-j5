@@ -35,6 +35,21 @@ export type Cell = {
   sheetRef?: string;
   /** Жёлтое предупреждение поверх ячейки — на видном месте */
   warning?: string;
+  /**
+   * Если ячейка должна сравниваться с одноимённой записью в Remonline —
+   * описываем что и где искать. Точное значение из РО подтянется на клиенте
+   * через snapshot, синхронизация — кнопкой на ячейке.
+   */
+  roMatch?: {
+    /** Что именно сравниваем с РО */
+    kind:
+      | "service-price"
+      | "service-duration"
+      | "part-retail"
+      | "part-purchase";
+    /** Нормализованное имя услуги/запчасти, по которому ищем в snapshot */
+    key: string;
+  };
 };
 
 export type Stage = {
@@ -102,4 +117,8 @@ export type PositionStub = {
   finalPrice: number | null;
   warranty: string;
   draft?: boolean;
+  /** Нормализованное имя услуги в РО — для быстрой проверки конфликтов в каталоге */
+  roServiceKey?: string;
+  /** Нормализованное имя запчасти в РО */
+  roPartKey?: string;
 };

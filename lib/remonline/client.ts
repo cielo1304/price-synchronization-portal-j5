@@ -74,6 +74,34 @@ async function apiGet<T>(
   return (await res.json()) as T;
 }
 
+/** Низкоуровневый POST с form-encoded body. РО v1 использует form, не JSON. */
+async function apiPostForm<T>(
+  path: string,
+  body: Record<string, string | number | null | undefined>,
+): Promise<T> {
+  const token = await getSessionToken();
+  const url = new URL(`${BASE_URL}${path}`);
+  url.searchParams.set("token", token);
+  const form = new URLSearchParams();
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined || v === null) continue;
+    form.set(k, String(v));
+  }
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Remonline POST ${path} вернул HTTP ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
 // ── Доменные типы ──────────────────────────────────────────────────────
 
 export type RoWarehouse = {
@@ -165,4 +193,24 @@ export async function fetchAllServices(): Promise<RoService[]> {
     if (items.length < 50) break;
   }
   return out;
+}
+
+// ── Запись (одиночные апдейты) ─────────────────────────────────────────
+
+/** Обновить услугу. Передаём только те поля, что хотим поменять. */
+export async function updateService(
+  id: number,
+  patch: { price?: number; duration?: number; title?: string },
+): Promise<{ ok: true }> {
+  await apiPostForm(`/services/${id}/`, patch);
+  return { ok: true };
+}
+
+/** Обновить товар. Используется для розничной/закупочной цены. */
+export async function updateProduct(
+  id: number,
+  patch: { price?: number; custom_price?: number; title?: string },
+): Promise<{ ok: true }> {
+  await apiPostForm(`/warehouse/goods/${id}/`, patch);
+  return { ok: true };
 }

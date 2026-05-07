@@ -7,6 +7,7 @@ import type {
 } from "./portal-types";
 import type { CustomModel, CustomService } from "./portal-custom-models";
 import rawPositions from "./portal-positions.json";
+import { normalizeName } from "./remonline/normalize";
 
 /**
  * Каталог прайс-портала.
@@ -178,6 +179,10 @@ function recordToStub(rec: RawSource): PositionStub {
     finalPrice: rec.finalPrice,
     warranty: rec.warrantyDays ? `${rec.warrantyDays} дней` : "—",
     draft: isDraft,
+    // Ключи для матчинга с Remonline. Имя услуги/запчасти из исходных данных
+    // приводим к нормализованной форме — по ней snapshot ищет соответствие.
+    roServiceKey: rec.labor?.name ? normalizeName(rec.labor.name) : undefined,
+    roPartKey: rec.part?.name ? normalizeName(rec.part.name) : undefined,
   };
 }
 
@@ -247,6 +252,8 @@ function recordToPosition(rec: RawSource): Position {
       ),
     });
 
+    const partRoKey = part?.name ? normalizeName(part.name) : undefined;
+
     stages.push({
       id: "purchase",
       title: "Закупочная",
@@ -263,6 +270,9 @@ function recordToPosition(rec: RawSource): Position {
           note: hasParsed
             ? undefined
             : "Нет данных от поставщиков — нужна ручная закупка",
+          roMatch: partRoKey
+            ? { kind: "part-purchase", key: partRoKey }
+            : undefined,
         },
       ],
     });
@@ -306,6 +316,9 @@ function recordToPosition(rec: RawSource): Position {
           note: part?.sheetRefRetail
             ? `Уходит в ${part.sheetRefRetail} (Q-колонка БД_ЗАПЧАСТИ)`
             : undefined,
+          roMatch: partRoKey
+            ? { kind: "part-retail", key: partRoKey }
+            : undefined,
         },
       ],
     });
@@ -315,7 +328,7 @@ function recordToPosition(rec: RawSource): Position {
     stages.push(
       {
         id: "sources",
-        title: "Источники цен",
+        title: "��сточники цен",
         subtitle: "Запчасть не используется",
         placeholder: true,
         cells: [
@@ -379,6 +392,9 @@ function recordToPosition(rec: RawSource): Position {
 
   // 2) Работа
   const laborPrice = rec.labor?.price ?? 0;
+  const laborRoKey = rec.labor?.name
+    ? normalizeName(rec.labor.name)
+    : undefined;
   stages.push({
     id: "labor",
     title: "Работа",
@@ -394,6 +410,9 @@ function recordToPosition(rec: RawSource): Position {
         sheetRef: rec.labor?.sheetRef,
         note: rec.labor?.sheetRef
           ? `Источник истины: ${rec.labor.sheetRef}`
+          : undefined,
+        roMatch: laborRoKey
+          ? { kind: "service-price", key: laborRoKey }
           : undefined,
       },
     ],
@@ -552,6 +571,33 @@ const recordsById = new Map<string, RawSource>(
 const positionCache = new Map<string, Position>();
 
 export const CATALOG_INDEX: PositionStub[] = records.map(recordToStub);
+
+/**
+ * Отпечаток цен позиции — лёгкая структура с только теми числами, что нужны
+ * для сравнения с Remonline. Используется для быстрого подсчёта конфликтов
+ * в каталоге без построения полных Position-объектов.
+ */
+export type PricingFingerprint = {
+  positionId: string;
+  device: string;
+  roServiceKey?: string;
+  laborPrice: number | null;
+  roPartKey?: string;
+  partRetail: number | null;
+  partPurchase: number | null;
+};
+
+export const PRICING_FINGERPRINTS: PricingFingerprint[] = records.map(
+  (rec): PricingFingerprint => ({
+    positionId: makeId(rec),
+    device: rec.model,
+    roServiceKey: rec.labor?.name ? normalizeName(rec.labor.name) : undefined,
+    laborPrice: rec.labor?.price ?? null,
+    roPartKey: rec.part?.name ? normalizeName(rec.part.name) : undefined,
+    partRetail: rec.part?.retailRO ?? null,
+    partPurchase: rec.part?.purchase ?? null,
+  }),
+);
 
 export function getPositionById(id: string): Position | null {
   if (positionCache.has(id)) return positionCache.get(id)!;

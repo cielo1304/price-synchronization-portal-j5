@@ -10,6 +10,7 @@ import {
 } from "@/lib/portal-catalog";
 import { useOverride } from "@/lib/portal-overrides";
 import { useCustomModels } from "@/lib/portal-custom-models";
+import { RemonlineProvider } from "@/lib/remonline/context";
 import { SyncPanel } from "./sync-panel";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
@@ -109,6 +110,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
   }
 
   return (
+    <RemonlineProvider>
     <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-6 md:px-6 md:py-8">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -223,6 +225,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
         </div>
       </div>
     </div>
+    </RemonlineProvider>
   );
 }
 
