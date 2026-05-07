@@ -29,9 +29,10 @@ type DiagnosticResult = {
   error?: string;
   tokenLength?: number;
   tokenPreview?: string;
+  sessionToken?: string | null;
   results?: Array<{
     url: string;
-    auth: "bearer" | "none";
+    auth: "bearer" | "query-token" | "none";
     status: number;
     ok: boolean;
     bodyPreview: string;
@@ -204,7 +205,7 @@ export function SyncPanel() {
 
               <Section title="Snapshot">
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Каждая кнопка тянет полный список из РО и сравнивает с
+                  Каждая к��опка тянет полный список из РО и сравнивает с
                   каталогом портала по нормализованному имени. Расхождения
                   подсветятся красным восклицательным знаком прямо в позициях.
                 </p>
@@ -443,17 +444,25 @@ function DiagnosticReport({ report }: { report: DiagnosticResult }) {
   }
   if (!report.results) return null;
 
-  // Самая точная подсказка — первый успешный путь с авторизацией
-  const firstWorking = report.results.find((r) => r.ok && r.auth === "bearer");
+  // Самая точная подсказка — первый успешный путь с любой авторизацией.
+  const firstWorking = report.results.find(
+    (r) => r.ok && r.auth !== "none",
+  );
   const has401 = report.results.some((r) => r.status === 401);
   const has403 = report.results.some((r) => r.status === 403);
 
   return (
     <div className="mt-3 rounded-xl border border-border bg-card p-3 text-[11px]">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold">Отчёт о путях</span>
         <span className="font-mono text-muted-foreground">
-          token {report.tokenPreview} · {report.tokenLength} симв.
+          api-key {report.tokenPreview} · {report.tokenLength} симв.
+          {report.sessionToken && (
+            <>
+              {" · session "}
+              <span className="text-money">{report.sessionToken}</span>
+            </>
+          )}
         </span>
       </div>
 
