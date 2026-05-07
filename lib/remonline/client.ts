@@ -74,6 +74,36 @@ async function apiGet<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * Пробует несколько вариантов пути по очереди — нужно, потому что у Remonline
+ * исторически было два формата URL. Возвращает первый ответ с HTTP 200.
+ * Если все пути дали 404 — кидает ошибку с перечислением проб, чтобы было
+ * понятно, что именно мы пытались.
+ */
+async function apiGetAny<T>(
+  paths: string[],
+  query: Record<string, string | number | undefined> = {},
+): Promise<T> {
+  const token = await getSessionToken();
+  const errors: string[] = [];
+  for (const path of paths) {
+    const url = new URL(`${BASE_URL}${path}`);
+    url.searchParams.set("token", token);
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined) url.searchParams.set(k, String(v));
+    }
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    if (res.ok) return (await res.json()) as T;
+    const text = await res.text().catch(() => "");
+    errors.push(`${path} → ${res.status}: ${text.slice(0, 80)}`);
+    // 401/403 не починятся другим путём — токен/права не пройдут.
+    if (res.status === 401 || res.status === 403) break;
+  }
+  throw new Error(
+    `Ни один из путей Remonline не сработал:\n${errors.join("\n")}`,
+  );
+}
+
 /** Низкоуровневый POST с form-encoded body. РО v1 использует form, не JSON. */
 async function apiPostForm<T>(
   path: string,
@@ -135,38 +165,60 @@ export type RoService = {
 
 // ── Публичные методы ───────────────────────────────────────────────────
 
-/** Список складов — для проверки подключения и выбора нужного */
+/**
+ * Список складов. Remonline в разных версиях документации использует то
+ * `/warehouses/`, то `/warehouse/warehouses/` — пробуем оба варианта.
+ */
 export async function listWarehouses(): Promise<RoWarehouse[]> {
-  const json = await apiGet<{ data: RoWarehouse[] }>("/warehouse/warehouses/");
+  const json = await apiGetAny<{ data: RoWarehouse[] }>([
+    "/warehouses/",
+    "/warehouse/warehouses/",
+  ]);
   return json.data ?? [];
 }
 
-/** Постраничная выгрузка товаров. Берёт максимум 50 на страницу. */
+/**
+ * Постраничная выгрузка товаров. Берёт максимум 50 на страницу.
+ * Пробуем оба формата URL: `/warehouse/goods/{id}/` (старый, путь)
+ * и `/warehouse/goods/?warehouse_id=N` (новый, query).
+ */
 export async function listProducts(
   warehouseId: number,
   opts: { page?: number; search?: string } = {},
 ): Promise<{ items: RoProduct[]; page: number; count: number }> {
-  const json = await apiGet<{
+  const json = await apiGetAny<{
     data: RoProduct[];
     count: number;
     page: number;
-  }>(`/warehouse/goods/${warehouseId}/`, {
-    page: opts.page ?? 1,
-    search: opts.search,
-  });
-  return { items: json.data ?? [], page: json.page ?? 1, count: json.count ?? 0 };
+  }>(
+    [`/warehouse/goods/${warehouseId}/`, "/warehouse/goods/"],
+    {
+      warehouse_id: warehouseId,
+      page: opts.page ?? 1,
+      search: opts.search,
+    },
+  );
+  return {
+    items: json.data ?? [],
+    page: json.page ?? 1,
+    count: json.count ?? 0,
+  };
 }
 
 /** Постраничная выгрузка услуг */
-export async function listServices(opts: {
-  page?: number;
-} = {}): Promise<{ items: RoService[]; page: number; count: number }> {
-  const json = await apiGet<{
+export async function listServices(
+  opts: { page?: number } = {},
+): Promise<{ items: RoService[]; page: number; count: number }> {
+  const json = await apiGetAny<{
     data: RoService[];
     count: number;
     page: number;
-  }>("/services/", { page: opts.page ?? 1 });
-  return { items: json.data ?? [], page: json.page ?? 1, count: json.count ?? 0 };
+  }>(["/services/", "/services"], { page: opts.page ?? 1 });
+  return {
+    items: json.data ?? [],
+    page: json.page ?? 1,
+    count: json.count ?? 0,
+  };
 }
 
 /**
