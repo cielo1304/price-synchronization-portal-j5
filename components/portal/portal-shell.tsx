@@ -10,6 +10,7 @@ import {
 } from "@/lib/portal-catalog";
 import { useOverride } from "@/lib/portal-overrides";
 import { useCustomModels } from "@/lib/portal-custom-models";
+import { SyncPanel } from "./sync-panel";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
 import { PipelineStage } from "./pipeline-stage";
@@ -130,13 +131,14 @@ export function PortalShell({ index, defaultPositionId }: Props) {
             </div>
           </div>
         </div>
-        <div className="hidden items-center gap-3 text-xs text-muted-foreground md:flex">
-          <span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="hidden md:inline">
             {fullIndex.length.toLocaleString("ru-RU")} позиций
           </span>
-          <span className="rounded-full border border-border bg-card px-2 py-0.5 font-mono">
+          <span className="hidden rounded-full border border-border bg-card px-2 py-0.5 font-mono md:inline">
             данные из вашей таблицы
           </span>
+          <SyncPanel />
         </div>
       </header>
 
