@@ -16,6 +16,7 @@ import {
   Loader2,
   Send,
   Package,
+  RefreshCw,
 } from "lucide-react";
 import { useCellRoResolution, useRemonline } from "@/lib/remonline/context";
 
@@ -44,6 +45,18 @@ function formatRoValue(value: number | null, unit: Cell["unit"]): string {
   return `${value.toLocaleString("ru-RU")} ₽`;
 }
 
+/** «5 сек назад», «2 мин назад» — подпись под live-остатком */
+function formatAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 5) return "только что";
+  if (sec < 60) return `${sec} сек назад`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.floor(min / 60);
+  return `${h} ч назад`;
+}
+
 type Props = {
   cell: Cell;
   selected?: boolean;
@@ -55,11 +68,30 @@ export function CellCard({ cell, selected, onSelect }: Props) {
   const Icon = meta.icon;
 
   const ro = useCellRoResolution(cell, cell.value);
-  const { syncCell } = useRemonline();
+  const { syncCell, stockByKey, loadingStockKey, requestStock } = useRemonline();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [stockError, setStockError] = useState<string | null>(null);
 
   const isMismatch = ro.state === "resolved" && !ro.inSync;
+
+  // Кнопка «Запросить остатки» появляется только для ячеек запчасти,
+  // у которых есть привязка к РО. Свежий ответ хранится в context.
+  const isPartCell =
+    cell.roMatch?.kind === "part-retail" ||
+    cell.roMatch?.kind === "part-purchase";
+  const stockKey = isPartCell ? cell.roMatch!.key : null;
+  const liveStock = stockKey ? stockByKey.get(stockKey) : undefined;
+  const stockLoading = stockKey !== null && loadingStockKey === stockKey;
+
+  const handleRequestStock = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!stockKey) return;
+    setStockError(null);
+    const roId = ro.state === "resolved" ? ro.roId : undefined;
+    const res = await requestStock(stockKey, roId);
+    if (!res.ok) setStockError(res.error ?? "Ошибка");
+  };
 
   const styles = cn(
     "group relative w-full rounded-xl border bg-card text-left transition-all",
@@ -181,12 +213,6 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               {formatRoValue(ro.remoteValue, cell.unit)}
             </span>
           </div>
-          {typeof ro.remoteResidue === "number" && (
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Package className="h-2.5 w-2.5" />
-              на складе: {ro.remoteResidue} шт
-            </div>
-          )}
           {isMismatch && cell.value !== null && (
             <div className="mt-2 flex items-center gap-2">
               <button
@@ -205,6 +231,76 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               {syncError && (
                 <span className="text-[10px] text-rose-700">{syncError}</span>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Live-остатки запчасти: запрашиваются по кнопке прямо в ячейке */}
+      {isPartCell && (
+        <div className="border-t border-border/60 bg-card/40 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <Package className="h-3 w-3" />
+              остаток на складе
+            </div>
+            <button
+              type="button"
+              onClick={handleRequestStock}
+              disabled={stockLoading}
+              className="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium text-foreground transition hover:border-foreground/40 disabled:opacity-50"
+            >
+              {stockLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {stockLoading
+                ? "Запрос…"
+                : liveStock
+                  ? "Обновить"
+                  : "Запросить"}
+            </button>
+          </div>
+          {liveStock && (
+            <div className="mt-1.5 flex items-baseline justify-between">
+              <span
+                className={cn(
+                  "text-base font-semibold tabular-nums",
+                  liveStock.found
+                    ? liveStock.quantity > 0
+                      ? "text-money"
+                      : "text-rose-700"
+                    : "text-muted-foreground",
+                )}
+              >
+                {liveStock.found
+                  ? `${liveStock.quantity} шт`
+                  : "Не найдено в РО"}
+              </span>
+              <span className="text-[9px] text-muted-foreground">
+                {formatAgo(liveStock.fetchedAt)}
+              </span>
+            </div>
+          )}
+          {liveStock?.perWarehouse && liveStock.perWarehouse.length > 1 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {liveStock.perWarehouse.map((w) => (
+                <span
+                  key={w.warehouseId}
+                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground"
+                >
+                  склад {w.warehouseId}: {w.quantity}
+                </span>
+              ))}
+            </div>
+          )}
+          {stockError && (
+            <div className="mt-1 text-[10px] text-rose-700">{stockError}</div>
+          )}
+          {!liveStock && !stockLoading && !stockError && (
+            <div className="mt-1 text-[10px] text-muted-foreground">
+              Нажмите «Запросить», чтобы получить актуальный остаток.
             </div>
           )}
         </div>

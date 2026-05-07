@@ -43,6 +43,14 @@ type ProductsSnapshot = {
 
 // ── Контекст ──────────────────────────────────────────────────────────
 
+/** Live-остаток одной запчасти, запрошенный по кнопке. */
+export type StockReading = {
+  quantity: number;
+  fetchedAt: string;
+  perWarehouse?: Array<{ warehouseId: number; quantity: number }>;
+  found: boolean;
+};
+
 type CtxValue = {
   services: ServicesSnapshot | null;
   products: ProductsSnapshot | null;
@@ -58,6 +66,16 @@ type CtxValue = {
     cell: Cell,
     portalValue: number,
   ) => Promise<{ ok: boolean; error?: string }>;
+
+  /** Live-остатки по нормализованному ключу запчасти. */
+  stockByKey: Map<string, StockReading>;
+  /** Идёт ли запрос остатка для конкретной запчасти. */
+  loadingStockKey: string | null;
+  /** Запросить остаток одной запчасти прямо сейчас. */
+  requestStock: (
+    key: string,
+    roId?: number,
+  ) => Promise<{ ok: boolean; error?: string; reading?: StockReading }>;
 
   /** Сводка конфликтов по устройствам — для индикаторов в каталоге слева. */
   conflictByDevice: Map<
@@ -154,6 +172,49 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [errorServices, setErrorServices] = useState<string | null>(null);
   const [errorProducts, setErrorProducts] = useState<string | null>(null);
+
+  // Live-остатки запрашиваются по требованию: нажал кнопку у запчасти —
+  // дёрнули РО, ответ записали в Map. Map переживает свёртывание ячейки.
+  const [stockByKey, setStockByKey] = useState<Map<string, StockReading>>(
+    () => new Map(),
+  );
+  const [loadingStockKey, setLoadingStockKey] = useState<string | null>(null);
+
+  const requestStock = useCallback<CtxValue["requestStock"]>(
+    async (key, roId) => {
+      setLoadingStockKey(key);
+      try {
+        const res = await fetch("/api/remonline/stock", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, roId }),
+        });
+        const json = await res.json();
+        if (!json.ok)
+          return { ok: false, error: json.error ?? "Ошибка ответа" };
+        const reading: StockReading = {
+          quantity: json.quantity ?? 0,
+          fetchedAt: json.fetchedAt,
+          perWarehouse: json.perWarehouse,
+          found: !!json.found,
+        };
+        setStockByKey((prev) => {
+          const next = new Map(prev);
+          next.set(key, reading);
+          return next;
+        });
+        return { ok: true, reading };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        setLoadingStockKey(null);
+      }
+    },
+    [],
+  );
 
   const loadServices = useCallback(async () => {
     setLoadingServices(true);
@@ -357,6 +418,9 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadServices,
       loadProducts,
       syncCell,
+      stockByKey,
+      loadingStockKey,
+      requestStock,
       conflictByDevice,
     }),
     [
@@ -369,6 +433,9 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadServices,
       loadProducts,
       syncCell,
+      stockByKey,
+      loadingStockKey,
+      requestStock,
       conflictByDevice,
     ],
   );
