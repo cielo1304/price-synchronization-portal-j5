@@ -31,12 +31,16 @@ export async function GET() {
     const services = await listServices({ page: 1 });
     summary.servicesCount = services.count;
 
-    const products = await listProducts({ page: 1 });
-    summary.productsSample = products.items.slice(0, 5).map((p) => ({
-      id: p.id,
-      title: p.title,
-      article: p.article,
-    }));
+    // Товары привязаны к складу — берём первый, чтобы убедиться, что
+    // полный путь /warehouse/goods/{id}/ тоже отвечает.
+    if (warehouses.length > 0) {
+      const products = await listProducts(warehouses[0].id, { page: 1 });
+      summary.productsSample = products.items.slice(0, 5).map((p) => ({
+        id: p.id,
+        title: p.title,
+        article: p.article,
+      }));
+    }
 
     summary.ok = true;
   } catch (err) {

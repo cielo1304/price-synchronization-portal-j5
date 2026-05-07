@@ -75,68 +75,20 @@ export async function GET() {
     }
   }
 
-  // 1. Карты API — для понимания того, какие пути живут на сервере.
+  // 1. Карта API без авторизации — должна отдать JSON со ссылками.
   await probe({ url: "https://api.roapp.io/", auth: "none" });
 
-  // 2. Получаем session-token. Это критично: без него ни один защищённый
-  //    эндпоинт v1 не ответит 200.
-  const tokenRes = await probe({
-    url: `https://api.remonline.app/token/new?api_key=${encodeURIComponent(apiKey)}`,
-    auth: "none",
-    method: "POST",
-  });
-
-  let sessionToken: string | null = null;
-  try {
-    const json = JSON.parse(tokenRes.body);
-    if (json && typeof json.token === "string") sessionToken = json.token;
-  } catch {
-    /* not json */
-  }
-
-  // 3. Проверяем тот же /token/new на api.roapp.io — раньше я уже видел,
-  //    что v1 эндпоинты дублируются и на этом домене.
-  if (!sessionToken) {
-    const altRes = await probe({
-      url: `https://api.roapp.io/api/token/new?api_key=${encodeURIComponent(apiKey)}`,
-      auth: "none",
-      method: "POST",
-    });
-    try {
-      const json = JSON.parse(altRes.body);
-      if (json && typeof json.token === "string") sessionToken = json.token;
-    } catch {
-      /* not json */
-    }
-  }
-
-  // 4. С полученным session-token пробиваем сначала ЗАВЕДОМО ЖИВОЙ эндпоинт
-  //    (`/api/bookings`, который явно указан в карте API). Если он ответит
-  //    200 — значит правильная база `https://api.roapp.io/api`, и мы сможем
-  //    дальше угадать пути для warehouse/goods. Если же 401/403 — значит
-  //    session-token не годится для этого формата API, и причина в этом.
-  if (sessionToken) {
-    const tk = encodeURIComponent(sessionToken);
-    const candidates = [
-      // Карта API явно подсказала — bookings живёт здесь:
-      `https://api.roapp.io/api/bookings?token=${tk}`,
-      `https://api.roapp.io/api/bookings/?token=${tk}`,
-
-      // Пары для складов на той же базе /api:
-      `https://api.roapp.io/api/warehouses?token=${tk}`,
-      `https://api.roapp.io/api/warehouses/?token=${tk}`,
-      `https://api.roapp.io/api/warehouse/warehouses?token=${tk}`,
-
-      // Товары — два известных шаблона v1:
-      `https://api.roapp.io/api/warehouse/goods?token=${tk}`,
-      `https://api.roapp.io/api/products?token=${tk}`,
-
-      // На случай, если api.remonline.app разрешает другой префикс:
-      `https://api.remonline.app/api/bookings?token=${tk}`,
-    ];
-    for (const url of candidates) {
-      await probe({ url, auth: "query-token" });
-    }
+  // 2. Главная проба: api-key как Bearer на api.remonline.app.
+  //    Это формат из официальных Python/PHP-примеров документации.
+  //    Никакого обмена на session-token не нужно — api-key самодостаточен.
+  const bearerCandidates = [
+    "https://api.remonline.app/warehouse/", // список складов
+    "https://api.remonline.app/services/", // список услуг
+    "https://api.remonline.app/branches", // список филиалов
+    "https://api.remonline.app/tasks", // список заявок (для контроля)
+  ];
+  for (const url of bearerCandidates) {
+    await probe({ url, auth: "bearer", bearerToken: apiKey });
   }
 
   return NextResponse.json(
@@ -144,9 +96,7 @@ export async function GET() {
       ok: true,
       tokenLength: apiKey.length,
       tokenPreview: `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`,
-      sessionToken: sessionToken
-        ? `${sessionToken.slice(0, 4)}…${sessionToken.slice(-4)}`
-        : null,
+      sessionToken: null,
       results,
     },
     { status: 200 },

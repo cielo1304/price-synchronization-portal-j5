@@ -1,18 +1,20 @@
 import "server-only";
 
 /**
- * Клиент Remonline Public API v2.
+ * Клиент Remonline Public API.
  *
- * Документация: https://roapp.readme.io/reference (версия 2.0).
- * База: https://api.roapp.io/v2 + Bearer-токен.
+ * Документация: https://roapp.readme.io/reference (RemOnline Public API).
+ * База: https://api.remonline.app + Bearer-токен (api-key прямо в Authorization).
  *
- * Корневой `https://api.roapp.io/` отдаёт карту v1 (/api/bookings, ...),
- * а `https://api.roapp.io/v2/` — карту v2 (/api/v2/bookings, ...).
- * Но у v2 рабочие пути «бизнесовых» эндпоинтов идут с префиксом /v2
- * напрямую — это видно в Try It на страницах документации.
+ * Никакого обмена api-key на session-token не нужно — это был старый-старый
+ * флоу 2018-2020 годов через POST /token/new. Сейчас api-key, выданный в
+ * настройках РО, используется напрямую: `Authorization: Bearer <api_key>`.
+ *
+ * Это подтверждается официальными Python/PHP/Node примерами в документации
+ * каждого эндпоинта (см. напр. /tasks или /warehouse/postings/).
  */
 
-const BASE_URL = "https://api.roapp.io/v2";
+const BASE_URL = "https://api.remonline.app";
 
 /** Таймаут одного HTTP-запроса. РО иногда долго отвечает на /products. */
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -145,28 +147,13 @@ function unwrapList<T>(json: V2List<T>): {
 
 // ── Чтение ─────────────────────────────────────────────────────────────
 
-/**
- * Список складов. v2 v2.0: GET /v2/warehouse/, v2.0.1: GET /v2/warehouses/.
- * Какая версия включена у конкретного аккаунта — заранее не известно,
- * поэтому пробуем обе. Первая успешная — выигрывает.
- */
+/** Список складов. GET /warehouse/ */
 export async function listWarehouses(): Promise<RoWarehouse[]> {
-  const tries = ["/warehouse/", "/warehouses/"];
-  let lastErr: unknown;
-  for (const path of tries) {
-    try {
-      const json = await apiGet<V2List<RoWarehouse>>(path);
-      return unwrapList(json).items;
-    } catch (err) {
-      lastErr = err;
-      // Пробуем следующий путь только если это 404 — на 401/403 смысла нет.
-      if (!String(err).includes("HTTP 404")) throw err;
-    }
-  }
-  throw lastErr;
+  const json = await apiGet<V2List<RoWarehouse>>("/warehouse/");
+  return unwrapList(json).items;
 }
 
-/** Постраничный список услуг. v2: GET /v2/services/ */
+/** Постраничный список услуг. GET /services/ */
 export async function listServices(
   opts: { page?: number; q?: string } = {},
 ): Promise<{ items: RoService[]; page: number; count: number }> {
@@ -188,22 +175,35 @@ export async function fetchAllServices(): Promise<RoService[]> {
   return out;
 }
 
-/** Постраничный список товаров. v2: GET /v2/products/ */
+/**
+ * Постраничный список товаров склада. GET /warehouse/goods/{warehouse_id}/
+ * Без указания склада эндпоинта нет — товары всегда привязаны к складу.
+ */
 export async function listProducts(
-  opts: { page?: number; q?: string; title?: string } = {},
+  warehouseId: number,
+  opts: { page?: number; search?: string } = {},
 ): Promise<{ items: RoProduct[]; page: number; count: number }> {
-  const json = await apiGet<V2List<RoProduct>>("/products/", {
-    page: opts.page,
-    q: opts.q,
-    title: opts.title,
-  });
+  const json = await apiGet<V2List<RoProduct>>(
+    `/warehouse/goods/${warehouseId}/`,
+    {
+      page: opts.page,
+      search: opts.search,
+    },
+  );
   return unwrapList(json);
 }
 
-export async function fetchAllProducts(): Promise<RoProduct[]> {
+/**
+ * Тянет все товары конкретного склада по страницам. РО возвращает 50 на страницу.
+ * 400 — защитный потолок (при 50 на стр. это 20 000 позиций, реальные
+ * каталоги обычно 1000-3000).
+ */
+export async function fetchAllProducts(
+  warehouseId: number,
+): Promise<RoProduct[]> {
   const out: RoProduct[] = [];
   for (let page = 1; page <= 400; page++) {
-    const { items } = await listProducts({ page });
+    const { items } = await listProducts(warehouseId, { page });
     if (items.length === 0) break;
     out.push(...items);
     if (items.length < 50) break;
@@ -212,22 +212,30 @@ export async function fetchAllProducts(): Promise<RoProduct[]> {
 }
 
 /**
- * Остатки по складу. v2: GET /v2/stock/?warehouse_id=N&...
- * Можно фильтровать по `title`, `q`, `ids[]`. Нам обычно нужно `q` или `title`.
+ * Остатки по складу. GET /warehouse/goods/{warehouse_id}/?search=<title>
+ *
+ * У РО нет отдельного эндпоинта `/stock` — остаток лежит в самом объекте
+ * товара (поле `residue` или `quantity`), и эндпоинт списка товаров склада
+ * принимает параметр `search`, который ищет по части названия. Этого
+ * достаточно для точечного запроса по нормализованному имени запчасти.
  */
 export async function getStock(
   warehouseId: number,
-  filter: { title?: string; q?: string; ids?: number[] } = {},
+  filter: { title?: string; q?: string } = {},
 ): Promise<RoStockItem[]> {
-  const json = await apiGet<V2List<RoStockItem>>(
-    "/stock/",
-    {
-      warehouse_id: warehouseId,
-      title: filter.title,
-      q: filter.q,
-      exclude_zero_residue: false,
-    },
-    filter.ids?.length ? { ids: filter.ids } : {},
-  );
-  return unwrapList(json).items;
+  // search принимает строку — берём первое осмысленное значение
+  const search = filter.title ?? filter.q;
+  const all: RoStockItem[] = [];
+  // На случай совпадений по нескольким товарам — забираем все страницы
+  for (let page = 1; page <= 10; page++) {
+    const json = await apiGet<V2List<RoStockItem>>(
+      `/warehouse/goods/${warehouseId}/`,
+      { page, search },
+    );
+    const { items } = unwrapList(json);
+    if (items.length === 0) break;
+    all.push(...items);
+    if (items.length < 50) break;
+  }
+  return all;
 }

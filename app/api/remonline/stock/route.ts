@@ -45,11 +45,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Стратегия запроса: если знаем точный roId — фильтруем по нему,
-    // иначе ищем по `q` (Remonline сам ищет в title/article/barcode).
-    const filter: { ids?: number[]; q?: string; title?: string } = {};
-    if (body.roId) filter.ids = [body.roId];
-    else if (body.title) filter.title = body.title;
+    // У РО /warehouse/goods/{id}/ нет фильтра по ID — поиск только по `search`
+    // в title/article. Нам этого достаточно: при клике на ячейку портал шлёт
+    // нормализованный `key` (= title без диакритики), РО его и ищет.
+    const filter: { q?: string; title?: string } = {};
+    if (body.title) filter.title = body.title;
     else if (body.key) filter.q = body.key;
 
     let totalQty = 0;
