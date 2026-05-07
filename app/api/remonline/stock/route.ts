@@ -4,38 +4,43 @@ import {
   getStock,
   type RoStockItem,
 } from "@/lib/remonline/client";
-import { normalizeName } from "@/lib/remonline/normalize";
 
 export const runtime = "nodejs";
-// Несколько складов × 30 сек таймаут на запрос — даём максимум.
 export const maxDuration = 60;
 
 /**
- * Live-остаток одной запчасти. v2: GET /v2/stock?warehouse_id=N&q=...
+ * Live-остаток одной запчасти.
  *
- * Принимает либо `roId` (если уже знаем точный товар),
- * либо `key` (нормализованное имя — портал шлёт его при клике на ячейку).
+ * Привязка строго по `roId` — идентификатору товара в РО, который мы знаем
+ * из snapshot товаров. Никаких поисков по словам / нормализованному имени:
+ * у каждой запчасти в портале есть железная связь с одной записью в РО,
+ * её и используем.
  *
- * Если склад не указан — обходит все склады и суммирует остатки.
+ * Параметр `roArticle` помогает РО сузить выдачу до 1-2 записей через
+ * `?search=<article>`. Если артикул отсутствует — тянем первую страницу
+ * товаров склада и фильтруем локально по id.
  */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
-      roId?: number;
       key?: string;
-      title?: string;
+      roId?: number;
+      roArticle?: string | null;
       warehouseId?: number;
     };
 
-    if (!body.roId && !body.key && !body.title) {
+    if (!body.roId) {
       return NextResponse.json(
-        { ok: false, error: "Нужно указать roId, key или title" },
+        {
+          ok: false,
+          error:
+            "Нет привязки к РО. Загрузите snapshot товаров — он сопоставит запчасти по ID.",
+        },
         { status: 400 },
       );
     }
+    const roId = body.roId;
 
-    // Тянем полный список складов даже если warehouseId передан явно —
-    // нужен `title` для подписи и для приоритезации.
     const allWarehouses = await listWarehouses();
     if (allWarehouses.length === 0) {
       return NextResponse.json(
@@ -60,28 +65,12 @@ export async function POST(req: Request) {
       ? orderedWarehouses.filter((w) => w.id === body.warehouseId)
       : orderedWarehouses;
 
-    // search в РО — это поиск по подстроке title/article (регистронезависимо).
-    // Передавать ВЕСЬ нормализованный key опасно: он содержит латинизи-
-    // рованные слова типа "displei servisnyj", которых нет в реальных
-    // названиях ("Дисплей - сервисный"). Поэтому передаём только первые
-    // 1-2 слова (обычно "iphone 16", "samsung s23") — этого хватает,
-    // чтобы РО вернул нужный поднабор.
-    const buildSearch = (key?: string, title?: string): string | undefined => {
-      const src = title ?? key;
-      if (!src) return undefined;
-      const words = src.split(/\s+/).filter(Boolean);
-      if (words.length === 0) return undefined;
-      const first = words[0];
-      // Если первое слово начинается с цифры (например "010a13") —
-      // выборка получится мусорная, лучше тянуть всё и матчить локально.
-      if (/^\d/.test(first)) return undefined;
-      return words.slice(0, 2).join(" ");
-    };
-    const searchValue = buildSearch(body.key, body.title);
-    const filter: { q?: string } = searchValue ? { q: searchValue } : {};
-
-    // Слова ключа, которые ВСЕ должны встретиться в нормализованном title.
-    const keyWords = body.key ? body.key.split(/\s+/).filter(Boolean) : [];
+    // Если есть артикул — search по нему точно сузит выдачу до нескольких
+    // записей. Если нет — search не передаём, тянем первую страницу
+    // (50 товаров) и ищем нужный id локально.
+    const filter: { q?: string } = body.roArticle
+      ? { q: body.roArticle }
+      : {};
 
     type WhResult = {
       warehouseId: number;
@@ -91,49 +80,16 @@ export async function POST(req: Request) {
     };
 
     /**
-     * Один склад: ищет лучшее совпадение и возвращает количество.
-     *
-     * Логика матчинга:
-     *  1. roId → точное равенство по id (идеальный случай).
-     *  2. key  → собираем кандидатов, у которых ВСЕ слова key встречаются
-     *           в нормализованном title (как подстроки). Из кандидатов
-     *           выбираем с самым коротким нормализованным title — он
-     *           самый «чистый», без лишних слов вроде «(копия)» или
-     *           «с мелким дефектом».
-     *  3. title → точное равенство по сырому title.
-     *
-     * Никакого fallback на items[0] — лучше показать «Не найдено», чем
-     * случайный товар склада как найденный.
+     * Один склад: ищет ровно тот товар, чей id === roId. Никакого fuzzy.
+     * Если на этом складе товара нет — quantity=0, match=null.
      */
     const probeWarehouse = async (w: {
       id: number;
       title: string;
     }): Promise<WhResult> => {
       const items = await getStock(w.id, filter);
-      let match: RoStockItem | null = null;
-
-      if (body.roId) {
-        match =
-          items.find((it) => (it.product_id ?? it.id) === body.roId) ?? null;
-      } else if (keyWords.length > 0) {
-        type Cand = { item: RoStockItem; normLen: number };
-        const candidates: Cand[] = [];
-        for (const it of items) {
-          const norm = normalizeName(it.product_title ?? it.title ?? "");
-          if (keyWords.every((kw) => norm.includes(kw))) {
-            candidates.push({ item: it, normLen: norm.length });
-          }
-        }
-        if (candidates.length > 0) {
-          candidates.sort((a, b) => a.normLen - b.normLen);
-          match = candidates[0].item;
-        }
-      } else if (body.title) {
-        match =
-          items.find((it) => (it.product_title ?? it.title) === body.title) ??
-          null;
-      }
-
+      const match =
+        items.find((it) => (it.product_id ?? it.id) === roId) ?? null;
       const qty = match
         ? Number(match.residue ?? match.quantity ?? match.amount ?? 0)
         : 0;
@@ -145,9 +101,8 @@ export async function POST(req: Request) {
       };
     };
 
-    // Все склады параллельно: 16 запросов × ~500мс ≈ 600мс с учётом
-    // конкурентности vs ~10 сек последовательно. РО спокойно держит
-    // такой залп — в документации лимит 30 req/min, мы укладываемся.
+    // Все склады параллельно: 16 запросов × ~400мс ≈ 600мс с учётом
+    // конкурентности vs ~10 сек последовательно.
     const results = await Promise.all(warehouses.map(probeWarehouse));
 
     let totalQty = 0;

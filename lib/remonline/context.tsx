@@ -72,6 +72,7 @@ type CtxValue = {
   requestStock: (
     key: string,
     roId?: number,
+    roArticle?: string | null,
   ) => Promise<{ ok: boolean; error?: string; reading?: StockReading }>;
 
   /** Сводка конфликтов по устройствам — для индикаторов в каталоге слева. */
@@ -100,6 +101,8 @@ export type CellRoResolution =
       state: "resolved";
       roId: number;
       roTitle: string;
+      /** Артикул товара (для part-*); у services его нет. */
+      roArticle: string | null;
       remoteValue: number | null;
       inSync: boolean;
     };
@@ -145,10 +148,16 @@ function resolveCell(
   const inSync =
     portalValue !== null && remote !== null && portalValue === remote;
 
+  // article есть только у товаров; у услуг — null
+  const roArticle = isService
+    ? null
+    : ((found as RoProductMatch).article ?? null);
+
   return {
     state: "resolved",
     roId: found.id,
     roTitle: found.title,
+    roArticle,
     remoteValue: remote,
     inSync,
   };
@@ -172,13 +181,13 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
   const [loadingStockKey, setLoadingStockKey] = useState<string | null>(null);
 
   const requestStock = useCallback<CtxValue["requestStock"]>(
-    async (key, roId) => {
+    async (key, roId, roArticle) => {
       setLoadingStockKey(key);
       try {
         const res = await fetch("/api/remonline/stock", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, roId }),
+          body: JSON.stringify({ key, roId, roArticle: roArticle ?? null }),
         });
         const json = await res.json();
         if (!json.ok)

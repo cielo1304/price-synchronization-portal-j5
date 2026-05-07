@@ -85,8 +85,20 @@ export function CellCard({ cell, selected, onSelect }: Props) {
     e.stopPropagation();
     if (!stockKey) return;
     setStockError(null);
-    const roId = ro.state === "resolved" ? ro.roId : undefined;
-    const res = await requestStock(stockKey, roId);
+    // Привязка к РО строится только через snapshot товаров. Без него
+    // (или если запчасть в snapshot не нашлась) запрос остатка смысла
+    // не имеет — пусть пользователь сначала загрузит/обновит snapshot.
+    if (ro.state !== "resolved") {
+      setStockError(
+        ro.state === "snapshot-missing"
+          ? "Сначала загрузите snapshot товаров РО"
+          : ro.state === "key-not-found"
+            ? `Запчасть «${ro.expectedKey}» не найдена в snapshot РО`
+            : "Нет привязки к РО",
+      );
+      return;
+    }
+    const res = await requestStock(stockKey, ro.roId, ro.roArticle);
     if (!res.ok) setStockError(res.error ?? "Ошибка");
   };
 
@@ -208,7 +220,7 @@ export function CellCard({ cell, selected, onSelect }: Props) {
         </div>
       )}
 
-      {/* Live-остатки запчасти: запрашиваются по кнопке прямо в ячейке */}
+      {/* Live-остатки запчасти: запрашиваются по кноп��е прямо в ячейке */}
       {isPartCell && (
         <div className="border-t border-border/60 bg-card/40 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
