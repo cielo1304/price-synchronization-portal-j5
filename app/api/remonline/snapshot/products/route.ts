@@ -1,32 +1,20 @@
 import { NextResponse } from "next/server";
-import { fetchAllProducts, listWarehouses } from "@/lib/remonline/client";
+import { fetchAllProducts } from "@/lib/remonline/client";
 import { normalizeName, priceOf } from "@/lib/remonline/normalize";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Snapshot товаров склада. По умолчанию берётся первый склад.
- * Возвращает Record<key, RoProductMatch> с остатками для real-time индикации.
+ * Snapshot всех товаров Remonline для матчинга по нормализованному имени.
+ * Возвращает Record<key, { id, title, article, retail }>.
+ *
+ * Остатки тут не возвращаем — они запрашиваются точечно через /api/remonline/stock,
+ * чтобы данные были live и не приходилось тянуть огромный список со всех складов.
  */
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const warehouseIdParam = url.searchParams.get("warehouse");
-
-    const warehouses = await listWarehouses();
-    if (warehouses.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "В Remonline не найдено ни одного склада" },
-        { status: 400 },
-      );
-    }
-    const warehouse = warehouseIdParam
-      ? (warehouses.find((w) => String(w.id) === warehouseIdParam) ??
-        warehouses[0])
-      : warehouses[0];
-
-    const products = await fetchAllProducts(warehouse.id);
+    const products = await fetchAllProducts();
     const items: Record<
       string,
       {
@@ -35,7 +23,6 @@ export async function GET(req: Request) {
         article: string | null;
         purchase: number | null;
         retail: number | null;
-        residue: number | null;
       }
     > = {};
     for (const p of products) {
@@ -45,17 +32,14 @@ export async function GET(req: Request) {
           id: p.id,
           title: p.title,
           article: p.article ?? null,
-          purchase: p.price ?? null,
+          purchase: p.cost ?? null,
           retail: priceOf(p),
-          residue: typeof p.residue === "number" ? p.residue : null,
         };
       }
     }
 
     return NextResponse.json({
       ok: true,
-      warehouse: { id: warehouse.id, title: warehouse.title },
-      warehouses: warehouses.map((w) => ({ id: w.id, title: w.title })),
       total: products.length,
       uniqueKeys: Object.keys(items).length,
       takenAt: new Date().toISOString(),

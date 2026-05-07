@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   CircleAlert,
   Loader2,
-  Send,
   Package,
   RefreshCw,
 } from "lucide-react";
@@ -68,9 +67,7 @@ export function CellCard({ cell, selected, onSelect }: Props) {
   const Icon = meta.icon;
 
   const ro = useCellRoResolution(cell, cell.value);
-  const { syncCell, stockByKey, loadingStockKey, requestStock } = useRemonline();
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const { stockByKey, loadingStockKey, requestStock } = useRemonline();
   const [stockError, setStockError] = useState<string | null>(null);
 
   const isMismatch = ro.state === "resolved" && !ro.inSync;
@@ -111,16 +108,6 @@ export function CellCard({ cell, selected, onSelect }: Props) {
     : cell.kind === "formula" || cell.kind === "auto"
       ? "text-flow"
       : "text-foreground";
-
-  const handleSync = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (cell.value === null) return;
-    setSyncing(true);
-    setSyncError(null);
-    const res = await syncCell(cell, cell.value);
-    setSyncing(false);
-    if (!res.ok) setSyncError(res.error ?? "Ошибка");
-  };
 
   return (
     <div className={styles}>
@@ -213,24 +200,9 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               {formatRoValue(ro.remoteValue, cell.unit)}
             </span>
           </div>
-          {isMismatch && cell.value !== null && (
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={syncing}
-                className="flex h-7 items-center gap-1.5 rounded-md bg-foreground px-2 text-[10px] font-semibold uppercase tracking-wider text-background transition hover:bg-foreground/85 disabled:opacity-50"
-              >
-                {syncing ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Send className="h-3 w-3" />
-                )}
-                {syncing ? "Пишу…" : "Записать в РО"}
-              </button>
-              {syncError && (
-                <span className="text-[10px] text-rose-700">{syncError}</span>
-              )}
+          {isMismatch && (
+            <div className="mt-1 text-[10px] text-rose-700/80">
+              Цены в портале и в РО расходятся — выровняйте вручную в Remonline.
             </div>
           )}
         </div>

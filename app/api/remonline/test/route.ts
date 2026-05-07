@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { listWarehouses, listServices, listProducts } from "@/lib/remonline/client";
+import {
+  listWarehouses,
+  listServices,
+  listProducts,
+} from "@/lib/remonline/client";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Проверка подключения к Remonline.
- * Дёргает 3 безопасных GET-эндпоинта и собирает сводку.
- * Никаких записей не делает.
+ * Проверка подключения к Remonline v2.
+ * Дёргает 3 безопасных GET-эндпоинта и собирает сводку. Только чтение.
  */
 export async function GET() {
   const summary: {
@@ -14,7 +17,11 @@ export async function GET() {
     error?: string;
     warehouses?: Array<{ id: number; title: string }>;
     servicesCount?: number;
-    productsSample?: Array<{ id: number; title: string; article?: string | null }>;
+    productsSample?: Array<{
+      id: number;
+      title: string;
+      article?: string | null;
+    }>;
   } = { ok: false };
 
   try {
@@ -24,14 +31,12 @@ export async function GET() {
     const services = await listServices({ page: 1 });
     summary.servicesCount = services.count;
 
-    if (warehouses[0]) {
-      const products = await listProducts(warehouses[0].id, { page: 1 });
-      summary.productsSample = products.items.slice(0, 5).map((p) => ({
-        id: p.id,
-        title: p.title,
-        article: p.article,
-      }));
-    }
+    const products = await listProducts({ page: 1 });
+    summary.productsSample = products.items.slice(0, 5).map((p) => ({
+      id: p.id,
+      title: p.title,
+      article: p.article,
+    }));
 
     summary.ok = true;
   } catch (err) {

@@ -174,7 +174,6 @@ export function SyncPanel() {
                     loading={loadingProducts}
                     error={errorProducts}
                     snapshot={products}
-                    warehouseTitle={products?.warehouse.title}
                     conflicts={totals.part}
                     onLoad={loadProducts}
                   />
@@ -232,7 +231,6 @@ function SnapshotButton({
   loading,
   error,
   snapshot,
-  warehouseTitle,
   conflicts,
   onLoad,
 }: {
@@ -241,7 +239,6 @@ function SnapshotButton({
   loading: boolean;
   error: string | null;
   snapshot: { takenAt: string; total: number } | null;
-  warehouseTitle?: string;
   conflicts: number;
   onLoad: () => void;
 }) {
@@ -280,7 +277,6 @@ function SnapshotButton({
       {snapshot && (
         <dl className="mt-3 space-y-1 text-[11px]">
           <KV label="В РО" value={snapshot.total.toLocaleString("ru-RU")} />
-          {warehouseTitle && <KV label="Склад" value={warehouseTitle} />}
           <KV
             label="Загружено"
             value={
