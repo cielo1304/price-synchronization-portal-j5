@@ -74,22 +74,26 @@ export async function POST(req: Request) {
       match: RoStockItem | null;
     };
 
-    /** Один склад: ищет товар и возвращает количество (0, если не нашли). */
+    /**
+     * Один склад: ищет ТОЧНОЕ совпадение и возвращает количество.
+     * НИКАКОГО fallback на items[0] — если совпадения нет, склад
+     * возвращает quantity=0, иначе мы в UI показывали бы случайный
+     * товар как «найден 8 шт.».
+     */
     const probeWarehouse = async (w: {
       id: number;
       title: string;
     }): Promise<WhResult> => {
       const items = await getStock(w.id, filter);
-      const match =
-        items.find((it) => {
-          if (body.roId) return (it.product_id ?? it.id) === body.roId;
-          if (body.key)
-            return (
-              normalizeName(it.product_title ?? it.title ?? "") === body.key
-            );
-          if (body.title) return (it.product_title ?? it.title) === body.title;
-          return false;
-        }) ?? items[0];
+      const match = items.find((it) => {
+        if (body.roId) return (it.product_id ?? it.id) === body.roId;
+        if (body.key)
+          return (
+            normalizeName(it.product_title ?? it.title ?? "") === body.key
+          );
+        if (body.title) return (it.product_title ?? it.title) === body.title;
+        return false;
+      });
       const qty = match
         ? Number(match.residue ?? match.quantity ?? match.amount ?? 0)
         : 0;
@@ -101,15 +105,10 @@ export async function POST(req: Request) {
       };
     };
 
-    // Параллельные запросы порциями по 5 — даёт ~3х ускорение по сравнению
-    // с последовательным обходом, но не упирается в rate limit РО (≈3 req/sec).
-    const CHUNK = 5;
-    const results: WhResult[] = [];
-    for (let i = 0; i < warehouses.length; i += CHUNK) {
-      const chunk = warehouses.slice(i, i + CHUNK);
-      const chunkResults = await Promise.all(chunk.map(probeWarehouse));
-      results.push(...chunkResults);
-    }
+    // Все склады параллельно: 16 запросов × ~500мс ≈ 600мс с учётом
+    // конкурентности vs ~10 сек последовательно. РО спокойно держит
+    // такой залп — в документации лимит 30 req/min, мы укладываемся.
+    const results = await Promise.all(warehouses.map(probeWarehouse));
 
     let totalQty = 0;
     let foundItem: RoStockItem | null = null;

@@ -218,30 +218,23 @@ export async function fetchAllProducts(
 /**
  * Остатки по складу. GET /warehouse/goods/{warehouse_id}?search=<title>
  *
- * У РО нет отдельного эндпоинта `/stock` — остаток лежит в самом объекте
- * товара (поле `residue` или `quantity`), и эндпоинт списка товаров склада
- * принимает параметр `search`, который ищет по части названия. Этого
- * достаточно для точечного запроса по нормализованному имени запчасти.
+ * У РО нет отдельного `/stock` — остаток лежит в самом объекте товара
+ * (поле `residue`). Параметр `search` ищет по подстроке title/article.
  *
- * ВАЖНО: путь без trailing slash, см. комментарий у listProducts.
+ * Тянем ОДНУ страницу (50 элементов). Если РО понимает search —
+ * страница маленькая и ответ быстрый. Если не понимает и возвращает
+ * первые 50 товаров склада — этого достаточно: точное совпадение
+ * мы потом отфильтруем локально по нормализованному имени.
+ * 10 страниц как было раньше — это 8 секунд × 16 складов = таймаут.
  */
 export async function getStock(
   warehouseId: number,
   filter: { title?: string; q?: string } = {},
 ): Promise<RoStockItem[]> {
-  // search принимает строку — берём первое осмысленное значение
   const search = filter.title ?? filter.q;
-  const all: RoStockItem[] = [];
-  // На случай совпадений по нескольким товарам — забираем все страницы
-  for (let page = 1; page <= 10; page++) {
-    const json = await apiGet<V2List<RoStockItem>>(
-      `/warehouse/goods/${warehouseId}`,
-      { page, search },
-    );
-    const { items } = unwrapList(json);
-    if (items.length === 0) break;
-    all.push(...items);
-    if (items.length < 50) break;
-  }
-  return all;
+  const json = await apiGet<V2List<RoStockItem>>(
+    `/warehouse/goods/${warehouseId}`,
+    { page: 1, search },
+  );
+  return unwrapList(json).items;
 }
