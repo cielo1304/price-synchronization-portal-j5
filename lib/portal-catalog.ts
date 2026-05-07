@@ -328,7 +328,7 @@ function recordToPosition(rec: RawSource): Position {
     stages.push(
       {
         id: "sources",
-        title: "��сточники цен",
+        title: "Источники цен",
         subtitle: "Запчасть не используется",
         placeholder: true,
         cells: [
@@ -614,7 +614,7 @@ export type CatalogGroup = {
   positions: PositionStub[];
 };
 
-// Сортировка моделей iPhone в порядке выхода — от новых к ��тарым.
+// Сортировка моделей iPhone в порядке выхода — от новых к старым.
 // Группы по году релиза:
 //   17 (2025) → 16 (2024) → 15 (2023) → 14 (2022) → 13 (2021) → 12 (2020) →
 //   11 (2019) → XS/XS Max/XR (2018) → X (2017) → 8/8+ (2017) → 7/7+ (2016) →
