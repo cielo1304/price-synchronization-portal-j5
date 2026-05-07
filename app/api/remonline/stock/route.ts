@@ -7,6 +7,8 @@ import {
 import { normalizeName } from "@/lib/remonline/normalize";
 
 export const runtime = "nodejs";
+// Несколько складов × 30 сек таймаут на запрос — даём максимум.
+export const maxDuration = 60;
 
 /**
  * Live-остаток одной запчасти. v2: GET /v2/stock?warehouse_id=N&q=...

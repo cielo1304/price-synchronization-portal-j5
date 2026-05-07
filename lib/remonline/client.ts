@@ -4,14 +4,19 @@ import "server-only";
  * Клиент Remonline Public API v2.
  *
  * Документация: https://roapp.readme.io/reference (версия 2.0).
- * База: https://api.roapp.io/v2 + Bearer-токен в заголовке Authorization.
+ * База: https://api.roapp.io/api/v2 + Bearer-токен в Authorization.
+ *
+ * Корневой эндпоинт `https://api.roapp.io/v2/` сам отдаёт ссылки на API:
+ *   { "bookings": "http://api.roapp.io/api/v2/bookings", ... }
+ * — именно поэтому префикс начинается с `/api`, а не с `/v2`.
  *
  * Этот клиент только на чтение — портал не пишет ничего в Remonline.
- * Если когда-то понадобится запись (PUT/POST/PATCH), добавим методы тут
- * с явным комментарием: «портал записывает в РО».
  */
 
-const BASE_URL = "https://api.roapp.io";
+const BASE_URL = "https://api.roapp.io/api/v2";
+
+/** Таймаут одного HTTP-запроса. РО иногда долго отвечает на /products. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function getApiToken(): string {
   const t = process.env.REMONLINE_API_TOKEN;
@@ -42,20 +47,36 @@ async function apiGet<T>(
   for (const [k, arr] of Object.entries(arrays)) {
     for (const v of arr) url.searchParams.append(`${k}[]`, String(v));
   }
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${getApiToken()}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `Remonline GET ${path} вернул HTTP ${res.status}: ${text.slice(0, 200)}`,
-    );
+  // AbortController нужен явно — у Node fetch нет встроенного timeout.
+  // Без него зависший запрос РО будет держать handler до серверного лимита (≈60 сек).
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${getApiToken()}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `Remonline GET ${path} вернул HTTP ${res.status}: ${text.slice(0, 200)}`,
+      );
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(
+        `Remonline GET ${path}: таймаут ${REQUEST_TIMEOUT_MS / 1000} сек. Попробуйте позже.`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await res.json()) as T;
 }
 
 // ── Доменные типы (минимум полей, что нужны порталу) ───────────────────
@@ -125,17 +146,17 @@ function unwrapList<T>(json: V2List<T>): {
 
 // ── Чтение ─────────────────────────────────────────────────────────────
 
-/** Список складов. v2: GET /v2/warehouse/ */
+/** Список складов. v2: GET /api/v2/warehouses/ */
 export async function listWarehouses(): Promise<RoWarehouse[]> {
-  const json = await apiGet<V2List<RoWarehouse>>("/v2/warehouse/");
+  const json = await apiGet<V2List<RoWarehouse>>("/warehouses/");
   return unwrapList(json).items;
 }
 
-/** Постраничный список услуг. v2: GET /v2/services */
+/** Постраничный список услуг. v2: GET /api/v2/services/ */
 export async function listServices(
   opts: { page?: number; q?: string } = {},
 ): Promise<{ items: RoService[]; page: number; count: number }> {
-  const json = await apiGet<V2List<RoService>>("/v2/services", {
+  const json = await apiGet<V2List<RoService>>("/services/", {
     page: opts.page,
     q: opts.q,
   });
@@ -153,11 +174,11 @@ export async function fetchAllServices(): Promise<RoService[]> {
   return out;
 }
 
-/** Постраничный список товаров. v2: GET /v2/products */
+/** Постраничный список товаров. v2: GET /api/v2/products/ */
 export async function listProducts(
   opts: { page?: number; q?: string; title?: string } = {},
 ): Promise<{ items: RoProduct[]; page: number; count: number }> {
-  const json = await apiGet<V2List<RoProduct>>("/v2/products", {
+  const json = await apiGet<V2List<RoProduct>>("/products/", {
     page: opts.page,
     q: opts.q,
     title: opts.title,
@@ -177,19 +198,15 @@ export async function fetchAllProducts(): Promise<RoProduct[]> {
 }
 
 /**
- * Остатки по складу. v2: GET /v2/stock?warehouse_id=N&...
- * Можно фильтровать по `title` (точное совпадение), `q` (текст),
- * `articles[]`, `barcodes[]`, `ids[]`. Нам обычно нужно `q` или `title`.
- *
- * Возвращает массив RoStockItem; каждый элемент — это запись об остатке
- * конкретного товара на этом складе.
+ * Остатки по складу. v2: GET /api/v2/stock/?warehouse_id=N&...
+ * Можно фильтровать по `title`, `q`, `ids[]`. Нам обычно нужно `q` или `title`.
  */
 export async function getStock(
   warehouseId: number,
   filter: { title?: string; q?: string; ids?: number[] } = {},
 ): Promise<RoStockItem[]> {
   const json = await apiGet<V2List<RoStockItem>>(
-    "/v2/stock",
+    "/stock/",
     {
       warehouse_id: warehouseId,
       title: filter.title,
