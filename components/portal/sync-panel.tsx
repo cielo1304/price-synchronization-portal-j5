@@ -24,10 +24,26 @@ type TestResult = {
   productsSample?: Array<{ id: number; title: string; article?: string | null }>;
 };
 
+type DiagnosticResult = {
+  ok: boolean;
+  error?: string;
+  tokenLength?: number;
+  tokenPreview?: string;
+  results?: Array<{
+    url: string;
+    auth: "bearer" | "none";
+    status: number;
+    ok: boolean;
+    bodyPreview: string;
+  }>;
+};
+
 export function SyncPanel() {
   const [open, setOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diag, setDiag] = useState<DiagnosticResult | null>(null);
   const {
     services,
     products,
@@ -64,6 +80,26 @@ export function SyncPanel() {
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  // Запускает обход разных версий пути и баз. Помогает понять, какой
+  // эндпоинт реально работает у конкретного аккаунта/токена РО.
+  const runDiagnostic = async () => {
+    setDiagnosing(true);
+    setDiag(null);
+    try {
+      const res = await fetch("/api/remonline/diagnostic", {
+        cache: "no-store",
+      });
+      setDiag(await res.json());
+    } catch (err) {
+      setDiag({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setDiagnosing(false);
     }
   };
 
@@ -123,7 +159,7 @@ export function SyncPanel() {
 
             <div className="flex-1 overflow-y-auto p-5">
               <Section title="Подключение">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={runTest}
@@ -137,6 +173,20 @@ export function SyncPanel() {
                     )}
                     {testing ? "Проверяю…" : "Проверить токен"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={runDiagnostic}
+                    disabled={diagnosing}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium transition hover:border-foreground/40 disabled:opacity-50"
+                    title="Пробуем разные варианты URL — поможет понять, в каком формате ваш аккаунт ждёт запросы"
+                  >
+                    {diagnosing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <AlertCircle className="h-3.5 w-3.5" />
+                    )}
+                    {diagnosing ? "Зондирую…" : "Диагностика путей"}
+                  </button>
                   {test?.ok && (
                     <span className="flex items-center gap-1 rounded-full border border-money/30 bg-money-muted px-2 py-1 text-[11px] font-medium text-money">
                       <CheckCircle2 className="h-3 w-3" />
@@ -147,6 +197,7 @@ export function SyncPanel() {
                 {test && !test.ok && (
                   <ErrorBox message={test.error ?? "Неизвестная ошибка"} />
                 )}
+                {diag && <DiagnosticReport report={diag} />}
               </Section>
 
               <div className="my-5 h-px bg-border" />
@@ -377,6 +428,87 @@ function KV({
     <div className="flex items-center justify-between gap-3 text-muted-foreground">
       <dt>{label}</dt>
       <dd className="font-mono text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Отчёт о диагностике: построчно показывает, какой URL и какой ответ
+ * пришёл. Подсказывает, в чём дело: 401 — токен битый, 403 — нет прав
+ * на эндпоинт, 404 — путь у этой версии API другой.
+ */
+function DiagnosticReport({ report }: { report: DiagnosticResult }) {
+  if (!report.ok && report.error) {
+    return <ErrorBox message={report.error} />;
+  }
+  if (!report.results) return null;
+
+  // Самая точная подсказка — первый успешный путь с авторизацией
+  const firstWorking = report.results.find((r) => r.ok && r.auth === "bearer");
+  const has401 = report.results.some((r) => r.status === 401);
+  const has403 = report.results.some((r) => r.status === 403);
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-card p-3 text-[11px]">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-semibold">Отчёт о путях</span>
+        <span className="font-mono text-muted-foreground">
+          token {report.tokenPreview} · {report.tokenLength} симв.
+        </span>
+      </div>
+
+      {firstWorking ? (
+        <div className="mb-2 rounded-md border border-money/30 bg-money-muted px-2 py-1.5 text-money">
+          Работает: <span className="font-mono">{firstWorking.url}</span>
+        </div>
+      ) : has401 ? (
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-50 px-2 py-1.5 text-amber-900">
+          Все защищённые пути отвечают 401. Это значит, что токен из
+          REMONLINE_API_TOKEN не подходит для v2 API. В Ремонлайне есть два
+          типа доступа: api-key (для старого v1) и access-token (для v2 через
+          OAuth). Нужно сгенерировать именно access-token.
+        </div>
+      ) : has403 ? (
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-50 px-2 py-1.5 text-amber-900">
+          Токен валиден, но у пользователя/тарифа нет доступа к этим
+          эндпоинтам. Проверьте права в настройках Ремонлайна.
+        </div>
+      ) : (
+        <div className="mb-2 rounded-md border border-rose-300 bg-rose-50 px-2 py-1.5 text-rose-700">
+          Ни один путь не ответил 200. Скорее всего, у вашего аккаунта другая
+          версия API — отправьте мне отчёт ниже, доточу клиент.
+        </div>
+      )}
+
+      <ul className="space-y-1 font-mono">
+        {report.results.map((r) => (
+          <li
+            key={r.url + r.auth}
+            className="flex items-start gap-2 border-t border-border/60 pt-1 first:border-0 first:pt-0"
+          >
+            <span
+              className={cn(
+                "mt-px flex h-4 min-w-[2.25rem] items-center justify-center rounded text-[10px] font-bold tabular-nums",
+                r.ok
+                  ? "bg-money-muted text-money"
+                  : r.status >= 400 && r.status < 500
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-rose-100 text-rose-700",
+              )}
+            >
+              {r.status || "ERR"}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-foreground">{r.url}</div>
+              {r.bodyPreview && (
+                <div className="truncate text-muted-foreground">
+                  {r.bodyPreview}
+                </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

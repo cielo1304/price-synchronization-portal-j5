@@ -4,16 +4,15 @@ import "server-only";
  * Клиент Remonline Public API v2.
  *
  * Документация: https://roapp.readme.io/reference (версия 2.0).
- * База: https://api.roapp.io/api/v2 + Bearer-токен в Authorization.
+ * База: https://api.roapp.io/v2 + Bearer-токен.
  *
- * Корневой эндпоинт `https://api.roapp.io/v2/` сам отдаёт ссылки на API:
- *   { "bookings": "http://api.roapp.io/api/v2/bookings", ... }
- * — именно поэтому префикс начинается с `/api`, а не с `/v2`.
- *
- * Этот клиент только на чтение — портал не пишет ничего в Remonline.
+ * Корневой `https://api.roapp.io/` отдаёт карту v1 (/api/bookings, ...),
+ * а `https://api.roapp.io/v2/` — карту v2 (/api/v2/bookings, ...).
+ * Но у v2 рабочие пути «бизнесовых» эндпоинтов идут с префиксом /v2
+ * напрямую — это видно в Try It на страницах документации.
  */
 
-const BASE_URL = "https://api.roapp.io/api/v2";
+const BASE_URL = "https://api.roapp.io/v2";
 
 /** Таймаут одного HTTP-запроса. РО иногда долго отвечает на /products. */
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -146,13 +145,28 @@ function unwrapList<T>(json: V2List<T>): {
 
 // ── Чтение ─────────────────────────────────────────────────────────────
 
-/** Список складов. v2: GET /api/v2/warehouses/ */
+/**
+ * Список складов. v2 v2.0: GET /v2/warehouse/, v2.0.1: GET /v2/warehouses/.
+ * Какая версия включена у конкретного аккаунта — заранее не известно,
+ * поэтому пробуем обе. Первая успешная — выигрывает.
+ */
 export async function listWarehouses(): Promise<RoWarehouse[]> {
-  const json = await apiGet<V2List<RoWarehouse>>("/warehouses/");
-  return unwrapList(json).items;
+  const tries = ["/warehouse/", "/warehouses/"];
+  let lastErr: unknown;
+  for (const path of tries) {
+    try {
+      const json = await apiGet<V2List<RoWarehouse>>(path);
+      return unwrapList(json).items;
+    } catch (err) {
+      lastErr = err;
+      // Пробуем следующий путь только если это 404 — на 401/403 смысла нет.
+      if (!String(err).includes("HTTP 404")) throw err;
+    }
+  }
+  throw lastErr;
 }
 
-/** Постраничный список услуг. v2: GET /api/v2/services/ */
+/** Постраничный список услуг. v2: GET /v2/services/ */
 export async function listServices(
   opts: { page?: number; q?: string } = {},
 ): Promise<{ items: RoService[]; page: number; count: number }> {
@@ -174,7 +188,7 @@ export async function fetchAllServices(): Promise<RoService[]> {
   return out;
 }
 
-/** Постраничный список товаров. v2: GET /api/v2/products/ */
+/** Постраничный список товаров. v2: GET /v2/products/ */
 export async function listProducts(
   opts: { page?: number; q?: string; title?: string } = {},
 ): Promise<{ items: RoProduct[]; page: number; count: number }> {
@@ -198,7 +212,7 @@ export async function fetchAllProducts(): Promise<RoProduct[]> {
 }
 
 /**
- * Остатки по складу. v2: GET /api/v2/stock/?warehouse_id=N&...
+ * Остатки по складу. v2: GET /v2/stock/?warehouse_id=N&...
  * Можно фильтровать по `title`, `q`, `ids[]`. Нам обычно нужно `q` или `title`.
  */
 export async function getStock(
