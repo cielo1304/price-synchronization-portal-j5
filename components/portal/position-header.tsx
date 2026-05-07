@@ -8,6 +8,7 @@ import {
   Clock,
   RotateCcw,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import type { Position } from "@/lib/portal-types";
 import {
@@ -29,8 +30,9 @@ export function PositionHeader({ position }: Props) {
   const hasOverride = useHasOverride(position.id);
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 md:flex-row md:items-center md:justify-between">
-      <div className="flex items-center gap-3">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background">
           <Smartphone className="h-5 w-5" />
         </div>
@@ -98,16 +100,24 @@ export function PositionHeader({ position }: Props) {
         </div>
       </div>
 
-      {finalCell && finalCell.value !== null && (
-        <div className="flex items-center gap-3 rounded-xl border border-money/40 bg-money-muted px-4 py-3">
-          <div className="text-right">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Конечная цена
-            </div>
-            <div className="text-2xl font-semibold tabular-nums text-money">
-              {finalCell.value.toLocaleString("ru-RU")} ₽
+        {finalCell && finalCell.value !== null && (
+          <div className="flex items-center gap-3 rounded-xl border border-money/40 bg-money-muted px-4 py-3">
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Конечная цена
+              </div>
+              <div className="text-2xl font-semibold tabular-nums text-money">
+                {finalCell.value.toLocaleString("ru-RU")} ₽
+              </div>
             </div>
           </div>
+        )}
+      </div>
+
+      {position.noPartWarning && (
+        <div className="flex items-start gap-2.5 border-t border-amber-500/30 bg-amber-50 px-5 py-3 text-sm leading-snug text-amber-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="text-pretty">{position.noPartWarning}</span>
         </div>
       )}
     </div>

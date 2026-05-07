@@ -142,6 +142,23 @@ function parseMinutes(duration: string | null): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
+/**
+ * Услуги, для которых запчасть не подразумевается по природе.
+ * Для них предупреждение «уточняйте цену на запчасть» НЕ показывается.
+ *   • Диагностика (любая)
+ *   • Чистка сеток динамиков и разъёма зарядки
+ *   • Профилактика после воды
+ */
+export function isPartExempt(serviceName: string, category?: string): boolean {
+  const haystack = `${category ?? ""} ${serviceName}`.toLowerCase();
+  if (/^\s*диагностик/.test(haystack)) return true;
+  if (/диагностик/.test(haystack) && /^\s*диагностик/.test(serviceName.toLowerCase()))
+    return true;
+  if (/чистк/.test(haystack)) return true;
+  if (/профилактик/.test(haystack)) return true;
+  return false;
+}
+
 // ── Лёгкий stub для навигатора ──────────────────────────────────────────
 function recordToStub(rec: RawSource): PositionStub {
   const { category, variant } = classifyService(rec.service);
@@ -174,6 +191,10 @@ function recordToPosition(rec: RawSource): Position {
   // 1) Источники цен запчасти
   const part = rec.part;
   const hasPart = !!part;
+  // Услуги, у которых запчасть не подразумевается по природе:
+  // диагностика, чистка сеток, профилактика после воды.
+  // Для таких услуг предупреждение НЕ показываем.
+  const partExempt = isPartExempt(rec.service, category);
   const sources: Array<{
     key: string;
     label: string;
@@ -421,9 +442,10 @@ function recordToPosition(rec: RawSource): Position {
         sheetRef: rec.priceListSheetRef,
         note: `В Google Sheets: ${rec.priceListSheetRef} (формула F)`,
         isFinal: true,
-        warning: hasPart
-          ? undefined
-          : "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!",
+        warning:
+          !hasPart && !partExempt
+            ? "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!"
+            : undefined,
       },
     ],
   });
@@ -515,6 +537,10 @@ function recordToPosition(rec: RawSource): Position {
       rec.labor === null ||
       rec.labor.price === null ||
       (hasPart && !hasParsed),
+    noPartWarning:
+      !hasPart && !partExempt
+        ? "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!"
+        : undefined,
   };
 }
 
@@ -655,6 +681,7 @@ function buildBlankPosition(
 ): Position {
   const stages: Stage[] = [];
   const hasPart = svc.hasPart;
+  const partExempt = isPartExempt(svc.serviceName, svc.category);
 
   if (hasPart) {
     stages.push({
@@ -842,9 +869,10 @@ function buildBlankPosition(
           : [`${id}.labor.price`],
         note: "Заполнится после ввода всех данных выше",
         isFinal: true,
-        warning: hasPart
-          ? undefined
-          : "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!",
+        warning:
+          !hasPart && !partExempt
+            ? "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!"
+            : undefined,
       },
     ],
   });
@@ -930,6 +958,10 @@ function buildBlankPosition(
     stages,
     outputs,
     draft: true,
+    noPartWarning:
+      !hasPart && !partExempt
+        ? "Внимание, для данной услуги нет запчасти, уточняйте цену на запчасть!"
+        : undefined,
   };
 }
 
