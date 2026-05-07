@@ -110,17 +110,29 @@ export async function GET() {
     }
   }
 
-  // 4. С полученным session-token пробиваем варианты списка складов.
-  //    Если ни один не ответит 200 — отчёт покажет реальные ошибки.
+  // 4. С полученным session-token пробиваем сначала ЗАВЕДОМО ЖИВОЙ эндпоинт
+  //    (`/api/bookings`, который явно указан в карте API). Если он ответит
+  //    200 — значит правильная база `https://api.roapp.io/api`, и мы сможем
+  //    дальше угадать пути для warehouse/goods. Если же 401/403 — значит
+  //    session-token не годится для этого формата API, и причина в этом.
   if (sessionToken) {
     const tk = encodeURIComponent(sessionToken);
     const candidates = [
-      `https://api.remonline.app/warehouse/warehouses/?token=${tk}`,
-      `https://api.remonline.app/warehouses/?token=${tk}`,
-      `https://api.remonline.app/api/warehouse/warehouses/?token=${tk}`,
-      `https://api.roapp.io/api/warehouse/warehouses/?token=${tk}`,
-      `https://api.roapp.io/warehouse/warehouses/?token=${tk}`,
-      `https://api.remonline.app/warehouse/goods/?token=${tk}`,
+      // Карта API явно подсказала — bookings живёт здесь:
+      `https://api.roapp.io/api/bookings?token=${tk}`,
+      `https://api.roapp.io/api/bookings/?token=${tk}`,
+
+      // Пары для складов на той же базе /api:
+      `https://api.roapp.io/api/warehouses?token=${tk}`,
+      `https://api.roapp.io/api/warehouses/?token=${tk}`,
+      `https://api.roapp.io/api/warehouse/warehouses?token=${tk}`,
+
+      // Товары — два известных шаблона v1:
+      `https://api.roapp.io/api/warehouse/goods?token=${tk}`,
+      `https://api.roapp.io/api/products?token=${tk}`,
+
+      // На случай, если api.remonline.app разрешает другой префикс:
+      `https://api.remonline.app/api/bookings?token=${tk}`,
     ];
     for (const url of candidates) {
       await probe({ url, auth: "query-token" });
