@@ -255,18 +255,21 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               </span>
             </div>
           )}
-          {liveStock?.perWarehouse && liveStock.perWarehouse.length > 1 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {liveStock.perWarehouse.map((w) => (
-                <span
-                  key={w.warehouseId}
-                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground"
-                >
-                  склад {w.warehouseId}: {w.quantity}
-                </span>
-              ))}
-            </div>
-          )}
+          {liveStock?.perWarehouse &&
+            liveStock.perWarehouse.filter((w) => w.quantity > 0).length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {liveStock.perWarehouse
+                  .filter((w) => w.quantity > 0)
+                  .map((w) => (
+                    <span
+                      key={w.warehouseId}
+                      className="rounded bg-money-muted px-1.5 py-0.5 text-[10px] font-medium text-money"
+                    >
+                      {w.warehouseTitle}: {w.quantity}
+                    </span>
+                  ))}
+              </div>
+            )}
           {stockError && (
             <div className="mt-1 text-[10px] text-rose-700">{stockError}</div>
           )}

@@ -45,7 +45,11 @@ type ProductsSnapshot = {
 export type StockReading = {
   quantity: number;
   fetchedAt: string;
-  perWarehouse?: Array<{ warehouseId: number; quantity: number }>;
+  perWarehouse?: Array<{
+    warehouseId: number;
+    warehouseTitle: string;
+    quantity: number;
+  }>;
   found: boolean;
 };
 
