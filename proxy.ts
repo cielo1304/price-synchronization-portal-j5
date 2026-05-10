@@ -11,7 +11,7 @@
  * Статика, _next/* и фавиконки исключены matcher-ом ниже.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, isValidSession } from "@/lib/auth";
+import { SESSION_COOKIE, isValidSession } from "./lib/auth";
 
 const PUBLIC_PATHS = new Set<string>([
   "/login",
