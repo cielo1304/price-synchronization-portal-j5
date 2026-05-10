@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Menu, X } from "lucide-react";
+import { ChevronRight, LogOut, Menu, X } from "lucide-react";
 import type { Cell, Position, PositionStub } from "@/lib/portal-types";
 import {
   getPositionById,
@@ -141,6 +141,19 @@ export function PortalShell({ index, defaultPositionId }: Props) {
             данные из вашей таблицы
           </span>
           <SyncPanel />
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            aria-label="Выйти"
+            title="Выйти"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Выйти</span>
+          </button>
         </div>
       </header>
 
