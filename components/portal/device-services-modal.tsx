@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, PackageSearch, X } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { PRICING_FINGERPRINTS } from "@/lib/portal-catalog";
+import { useRemonline, type StockReading } from "@/lib/remonline/context";
 import { getServiceBucket } from "./catalog-filters";
 import { cn } from "@/lib/utils";
 
@@ -16,12 +17,6 @@ type Props = {
 
 /**
  * Цветовая «лента» для группы узлов телефона.
- * 5 пастельных оттенков — каждый отвечает за крупную область:
- *   emerald — бесплатные/диагностика/чистка
- *   sky     — питание и звук (аккум, динамики, микрофон, разъёмы, зарядка)
- *   amber   — дисплей и стекло
- *   rose    — оптика и корпус (камеры, крышка)
- *   slate   — софт и плата (прошивка, Face ID, плата, Wi-Fi)
  */
 type BandTone = "emerald" | "sky" | "amber" | "rose" | "slate";
 
@@ -61,7 +56,6 @@ const BAND_CLASS: Record<BandTone, { row: string; chip: string }> = {
   },
 };
 
-/** Обёртка над getServiceBucket: бесплатные услуги уезжают в emerald. */
 function bucketForRow(p: PositionStub, retailPrice: number | null): {
   label: string;
   tone: BandTone;
@@ -76,6 +70,61 @@ function bucketForRow(p: PositionStub, retailPrice: number | null): {
   }
   const bucket = getServiceBucket(p.category);
   return { label: bucket, tone: BAND_BY_BUCKET[bucket] ?? "slate" };
+}
+
+/**
+ * Прогон через простой пул конкурентности: запускаем максимум `limit`
+ * задач параллельно и ждём, пока всё закончится. Нужно, чтобы при
+ * клике «Запросить остатки» по группе из 6 запчастей мы не лупили в
+ * РО все 6 одновременно × N складов — а делали по 4 за раз.
+ */
+async function runWithLimit<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let cursor = 0;
+  const workers = new Array(Math.min(limit, tasks.length))
+    .fill(0)
+    .map(async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= tasks.length) return;
+        results[i] = await tasks[i]();
+      }
+    });
+  await Promise.all(workers);
+  return results;
+}
+
+/** Короткое название склада для подписи под количеством. */
+function shortWarehouse(title: string | undefined): string {
+  if (!title) return "";
+  // «Максмобайлс > Склад Сервис» → «Склад Сервис»
+  const tail = title.split(">").pop()?.trim();
+  return tail || title;
+}
+
+/**
+ * Сводка по live-остатку: сколько штук всего и где лежит большинство.
+ * Берём склад с максимальным остатком — этого достаточно для подписи
+ * в строке таблицы. Если складов несколько — добавляем «+N».
+ */
+function summarizeStock(
+  reading: StockReading | undefined,
+): { qty: number; label: string } | null {
+  if (!reading || !reading.found) return null;
+  const total = reading.quantity;
+  const per = reading.perWarehouse?.filter((w) => w.quantity > 0) ?? [];
+  if (per.length === 0) return { qty: total, label: "" };
+  const sorted = [...per].sort((a, b) => b.quantity - a.quantity);
+  const top = sorted[0];
+  const rest = sorted.length - 1;
+  const label =
+    rest > 0
+      ? `${shortWarehouse(top.warehouseTitle)} +${rest}`
+      : shortWarehouse(top.warehouseTitle);
+  return { qty: total, label };
 }
 
 export function DeviceServicesModal({
@@ -94,12 +143,17 @@ export function DeviceServicesModal({
     return () => window.removeEventListener("keydown", handler);
   }, [device, onClose]);
 
-  // Карта позицийId → fingerprint, чтобы быстро доставать цены запчасти/работы
+  // Карта позицийId → fingerprint, чтобы быстро доставать цены и id запчасти
   const fingerprintById = useMemo(() => {
     const map = new Map<string, (typeof PRICING_FINGERPRINTS)[number]>();
     for (const fp of PRICING_FINGERPRINTS) map.set(fp.positionId, fp);
     return map;
   }, []);
+
+  const { stockByKey, requestStock } = useRemonline();
+
+  // Какие группы сейчас «в работе» — для крутилки на кнопке.
+  const [loadingGroup, setLoadingGroup] = useState<string | null>(null);
 
   // Все позиции выбранной модели + раскладка по бакетам
   const grouped = useMemo(() => {
@@ -111,10 +165,9 @@ export function DeviceServicesModal({
         const partRetail = fp?.partRetail ?? null;
         const laborPrice = fp?.laborPrice ?? null;
         const bucket = bucketForRow(p, p.finalPrice);
-        return { p, partRetail, laborPrice, bucket };
+        return { p, fp, partRetail, laborPrice, bucket };
       });
 
-    // Группируем по bucket.label, сохраняя порядок первого появления
     const order: string[] = [];
     const byBucket = new Map<string, typeof rows>();
     for (const r of rows) {
@@ -134,6 +187,39 @@ export function DeviceServicesModal({
   if (!device) return null;
 
   const totalRows = grouped.reduce((sum, g) => sum + g.rows.length, 0);
+
+  // Запрос остатков по всей группе: берём только те строки, у которых
+  // есть запчасть и хоть один идентификатор; для пустых — просто скип.
+  const requestGroupStock = async (groupLabel: string) => {
+    const group = grouped.find((g) => g.label === groupLabel);
+    if (!group) return;
+    setLoadingGroup(groupLabel);
+    const tasks: Array<() => Promise<unknown>> = [];
+    for (const r of group.rows) {
+      const fp = r.fp;
+      if (!fp?.roPartKey) continue;
+      const hasAnyId = !!(
+        fp.partProductId ||
+        fp.partCode ||
+        fp.partArticle ||
+        fp.partBarcode
+      );
+      if (!hasAnyId) continue;
+      tasks.push(() =>
+        requestStock(fp.roPartKey!, {
+          partArticle: fp.partArticle,
+          partProductId: fp.partProductId,
+          partCode: fp.partCode,
+          partBarcode: fp.partBarcode,
+        }),
+      );
+    }
+    try {
+      await runWithLimit(tasks, 4);
+    } finally {
+      setLoadingGroup(null);
+    }
+  };
 
   return (
     <div
@@ -168,7 +254,7 @@ export function DeviceServicesModal({
         </header>
 
         {/* Шапка таблицы */}
-        <div className="grid grid-cols-[1fr_110px_110px_110px] gap-2 border-b border-border bg-card/60 px-5 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="grid grid-cols-[1fr_110px_140px_110px] gap-2 border-b border-border bg-card/60 px-5 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           <div>Наименование работы</div>
           <div className="text-right">Розница</div>
           <div className="text-right">Запчасть ₽</div>
@@ -177,66 +263,128 @@ export function DeviceServicesModal({
 
         {/* Тело таблицы */}
         <div className="flex-1 overflow-y-auto">
-          {grouped.map((group) => (
-            <div key={group.label}>
-              <div
-                className={cn(
-                  "sticky top-0 z-10 flex items-center gap-2 px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider",
-                  BAND_CLASS[group.tone].chip,
-                )}
-              >
-                {group.label}
-                <span className="font-mono text-[10px] opacity-60">
-                  · {group.rows.length}
-                </span>
+          {grouped.map((group) => {
+            // Кнопка имеет смысл только если в группе есть хоть одна
+            // запчасть с идентификатором — иначе на эндпоинт нечего слать.
+            const groupHasParts = group.rows.some((r) => {
+              const fp = r.fp;
+              return (
+                fp?.roPartKey &&
+                !!(
+                  fp.partProductId ||
+                  fp.partCode ||
+                  fp.partArticle ||
+                  fp.partBarcode
+                )
+              );
+            });
+            const isLoading = loadingGroup === group.label;
+            return (
+              <div key={group.label}>
+                <div
+                  className={cn(
+                    "sticky top-0 z-10 flex items-center gap-2 px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider",
+                    BAND_CLASS[group.tone].chip,
+                  )}
+                >
+                  <span>{group.label}</span>
+                  <span className="font-mono text-[10px] opacity-60">
+                    · {group.rows.length}
+                  </span>
+                  {groupHasParts && (
+                    <button
+                      type="button"
+                      onClick={() => requestGroupStock(group.label)}
+                      disabled={isLoading}
+                      className={cn(
+                        "ml-auto inline-flex items-center gap-1 rounded-md border border-current/20 bg-background/70 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal transition",
+                        "hover:bg-background disabled:opacity-60",
+                      )}
+                      aria-label={`Запросить остатки для группы ${group.label}`}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <PackageSearch className="h-3 w-3" />
+                      )}
+                      <span>
+                        {isLoading ? "Запрашиваем…" : "Запросить остатки"}
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <ul>
+                  {group.rows.map(({ p, fp, partRetail, laborPrice }) => {
+                    const title =
+                      [p.category, p.variant].filter(Boolean).join(" — ") ||
+                      p.category;
+                    const stock = fp?.roPartKey
+                      ? summarizeStock(stockByKey.get(fp.roPartKey))
+                      : null;
+                    return (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectPosition(p.id);
+                            onClose();
+                          }}
+                          className={cn(
+                            "grid w-full grid-cols-[1fr_110px_140px_110px] items-start gap-2 border-b border-border/40 px-5 py-2 text-left text-sm transition",
+                            BAND_CLASS[group.tone].row,
+                          )}
+                        >
+                          <span className="min-w-0 truncate text-[13px] text-foreground">
+                            {title}
+                          </span>
+                          <span className="text-right font-mono text-[12px] tabular-nums text-money">
+                            {p.finalPrice
+                              ? `${p.finalPrice.toLocaleString("ru-RU")} ₽`
+                              : "—"}
+                          </span>
+                          <span className="flex flex-col items-end leading-tight">
+                            <span className="font-mono text-[12px] tabular-nums text-foreground/70">
+                              {partRetail
+                                ? partRetail.toLocaleString("ru-RU")
+                                : "—"}
+                            </span>
+                            {stock && stock.qty > 0 && (
+                              <span className="mt-0.5 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-900">
+                                <span className="tabular-nums">
+                                  {stock.qty} шт
+                                </span>
+                                {stock.label && (
+                                  <span className="font-normal opacity-80">
+                                    · {stock.label}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            {stock && stock.qty === 0 && (
+                              <span className="mt-0.5 text-[10px] text-muted-foreground">
+                                нет на складе
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-right font-mono text-[12px] font-semibold tabular-nums text-foreground">
+                            {laborPrice
+                              ? laborPrice.toLocaleString("ru-RU")
+                              : "—"}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              <ul>
-                {group.rows.map(({ p, partRetail, laborPrice }) => {
-                  const title =
-                    [p.category, p.variant].filter(Boolean).join(" — ") ||
-                    p.category;
-                  return (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSelectPosition(p.id);
-                          onClose();
-                        }}
-                        className={cn(
-                          "grid w-full grid-cols-[1fr_110px_110px_110px] items-center gap-2 border-b border-border/40 px-5 py-2 text-left text-sm transition",
-                          BAND_CLASS[group.tone].row,
-                        )}
-                      >
-                        <span className="min-w-0 truncate text-[13px] text-foreground">
-                          {title}
-                        </span>
-                        <span className="text-right font-mono text-[12px] tabular-nums text-money">
-                          {p.finalPrice
-                            ? `${p.finalPrice.toLocaleString("ru-RU")} ₽`
-                            : "—"}
-                        </span>
-                        <span className="text-right font-mono text-[12px] tabular-nums text-foreground/70">
-                          {partRetail
-                            ? partRetail.toLocaleString("ru-RU")
-                            : "—"}
-                        </span>
-                        <span className="text-right font-mono text-[12px] font-semibold tabular-nums text-foreground">
-                          {laborPrice
-                            ? laborPrice.toLocaleString("ru-RU")
-                            : "—"}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <footer className="border-t border-border px-5 py-2 text-[11px] text-muted-foreground">
-          Клик по строке — открыть полную карточку услуги
+          Клик по строке — открыть полную карточку услуги. Кнопка
+          «Запросить остатки» в шапке группы тянет актуальный остаток
+          по каждой запчасти из Remonline.
         </footer>
       </div>
     </div>

@@ -624,18 +624,50 @@ export type PricingFingerprint = {
   roPartKey?: string;
   partRetail: number | null;
   partPurchase: number | null;
+  /**
+   * Идентификаторы запчасти для запроса остатка через РО.
+   * Все поля очищены от пробелов; null если в исходной таблице пусто.
+   * Серверу `/api/remonline/stock` достаточно любого одного, чтобы
+   * найти товар точным фильтром (`ids[]` / `articles[]` / `barcodes[]`).
+   */
+  partProductId: string | null;
+  partCode: string | null;
+  partArticle: string | null;
+  partBarcode: string | null;
+};
+
+const cleanIdFp = (v?: string | null): string | null => {
+  if (!v) return null;
+  const s = String(v).replace(/\s+/g, "").trim();
+  return s.length ? s : null;
 };
 
 export const PRICING_FINGERPRINTS: PricingFingerprint[] = records.map(
-  (rec): PricingFingerprint => ({
-    positionId: makeId(rec),
-    device: rec.model,
-    roServiceKey: rec.labor?.name ? normalizeName(rec.labor.name) : undefined,
-    laborPrice: rec.labor?.price ?? null,
-    roPartKey: rec.part?.name ? normalizeName(rec.part.name) : undefined,
-    partRetail: rec.part?.retailRO ?? null,
-    partPurchase: rec.part?.purchase ?? null,
-  }),
+  (rec): PricingFingerprint => {
+    const partAny = rec.part as
+      | {
+          partId?: string | null;
+          partCode?: string | null;
+          partArticle?: string | null;
+          partBarcode?: string | null;
+        }
+      | undefined
+      | null;
+    const partProductId = cleanIdFp(partAny?.partId);
+    return {
+      positionId: makeId(rec),
+      device: rec.model,
+      roServiceKey: rec.labor?.name ? normalizeName(rec.labor.name) : undefined,
+      laborPrice: rec.labor?.price ?? null,
+      roPartKey: rec.part?.name ? normalizeName(rec.part.name) : undefined,
+      partRetail: rec.part?.retailRO ?? null,
+      partPurchase: rec.part?.purchase ?? null,
+      partProductId,
+      partCode: cleanIdFp(partAny?.partCode) ?? partProductId,
+      partArticle: cleanIdFp(partAny?.partArticle),
+      partBarcode: cleanIdFp(partAny?.partBarcode),
+    };
+  },
 );
 
 export function getPositionById(id: string): Position | null {
@@ -656,7 +688,7 @@ export type CatalogGroup = {
 // Сортировка моделей iPhone в порядке выхода — от новых к старым.
 // Группы по году релиза:
 //   17 (2025) → 16 (2024) → 15 (2023) → 14 (2022) → 13 (2021) → 12 (2020) →
-//   11 (2019) → XS/XS Max/XR (2018) → X (2017) → 8/8+ (2017) → 7/7+ (2016) →
+//   11 (2019) → XS/XS Max/XR (2018) → X (2017) → 8/8+ (2017) → 7/7+ (2016) ���
 //   SE 2016 → 6S/6S+ (2015) → 6/6+ (2014) → 5S/5C (2013) → 5 (2012).
 // SE 2/SE 3 ставим рядом со своим поколением (11 и 13).
 // Внутри поколения: Pro Max → Pro → Air → Plus → base → 16E → mini.
