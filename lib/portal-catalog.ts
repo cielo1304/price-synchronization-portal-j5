@@ -253,24 +253,31 @@ function recordToPosition(rec: RawSource): Position {
     });
 
     const partRoKey = part?.name ? normalizeName(part.name) : undefined;
-    // В исходной таблице у запчасти может быть две колонки:
-    //   • product_id — внутренний ID товара в РО (например «14870 175»),
-    //     лежит в part.partId. По нему РО НЕ ищет в `?search=` — только
-    //     через GET /products/{id}, чтобы оттуда вытащить article.
-    //   • article — короткий артикул («211149»), по которому РО ищет
-    //     в /warehouse/goods/?search=. Если он заполнен в JSON
-    //     (part.partArticle) — используем напрямую и обходимся одним
-    //     запросом. Иначе сервер сам резолвнет article из productId.
-    // Пробелы в product_id — визуальные разделители тысяч, режем их.
-    const rawProductId = (part as { partId?: string | null } | null)?.partId;
-    const partProductId = rawProductId
-      ? rawProductId.replace(/\s+/g, "").trim() || null
-      : null;
-    const rawArticle = (part as { partArticle?: string | null } | null)
-      ?.partArticle;
-    const partArticleRaw = rawArticle
-      ? rawArticle.replace(/\s+/g, "").trim() || null
-      : null;
+    // У запчасти в исходной таблице (а значит и в карточке РО) есть до
+    // четырёх идентификаторов: ID, Код, Артикул, Штрихкод. РО `?search=`
+    // ищет по любому из них (кроме самого ID, у которого собственный
+    // эндпоинт), поэтому забираем все, какие есть, и решение, что в
+    // итоге слать в `?search=`, оставляем серверу остатков.
+    // Сейчас в JSON живёт только `partId` — он у вас совпадает с «Код»
+    // в карточке РО, поэтому используем его как partCode (а заодно
+    // и как partProductId — на всякий, если понадобится резолв через
+    // /products/{id}). Когда дозаполните остальные колонки в исходнике,
+    // достаточно будет добавить их сюда.
+    const partAny = part as {
+      partId?: string | null;
+      partCode?: string | null;
+      partArticle?: string | null;
+      partBarcode?: string | null;
+    } | null;
+    const cleanId = (v?: string | null) => {
+      if (!v) return null;
+      const s = v.replace(/\s+/g, "").trim();
+      return s.length ? s : null;
+    };
+    const partProductId = cleanId(partAny?.partId);
+    const partCode = cleanId(partAny?.partCode) ?? cleanId(partAny?.partId);
+    const partArticleRaw = cleanId(partAny?.partArticle);
+    const partBarcodeRaw = cleanId(partAny?.partBarcode);
 
     stages.push({
       id: "purchase",
@@ -293,7 +300,9 @@ function recordToPosition(rec: RawSource): Position {
                 kind: "part-purchase",
                 key: partRoKey,
                 partProductId,
+                partCode,
                 partArticle: partArticleRaw,
+                partBarcode: partBarcodeRaw,
               }
             : undefined,
         },
@@ -344,7 +353,9 @@ function recordToPosition(rec: RawSource): Position {
                 kind: "part-retail",
                 key: partRoKey,
                 partProductId,
+                partCode,
                 partArticle: partArticleRaw,
+                partBarcode: partBarcodeRaw,
               }
             : undefined,
         },

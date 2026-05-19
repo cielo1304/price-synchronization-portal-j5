@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   listWarehouses,
   getStock,
-  getProductById,
   type RoStockItem,
 } from "@/lib/remonline/client";
 
@@ -12,80 +11,104 @@ export const maxDuration = 60;
 /**
  * Live-остаток одной запчасти.
  *
- * Привязка к товару в РО двухступенчатая:
+ * У запчасти в исходной таблице может быть до четырёх идентификаторов
+ * (ID / Код / Артикул / Штрихкод). РО `?search=` индексирует одновременно
+ * `title + article + code + barcode`, поэтому мы по очереди пробуем
+ * каждый непустой идентификатор: на первом, который вернул ровно один
+ * товар с точным совпадением хотя бы одного из его собственных полей —
+ * останавливаемся, обходим параллельно все 16 складов и считаем сумму
+ * остатков.
  *
- *   1. Если в каталоге заполнен `partArticle` (короткий артикул, по
- *      которому РО ищет в `?search=`, например «211149») — идём по нему
- *      сразу: один параллельный обход складов и точный матч по article.
+ * Порядок проб: штрихкод → артикул → код → ID. Самые «уникальные»
+ * идентификаторы идут первыми, чтобы минимизировать риск, что под
+ * `?search=` попадёт несколько разных товаров (например по короткому
+ * коду «175» уехал бы куст совпадений).
  *
- *   2. Если есть только `partProductId` (внутренний ID товара РО, в
- *      исходной таблице записан как «14870 175» с пробелом-разделителем
- *      тысяч) — `?search=` по нему НЕ работает. Сначала резолвим article
- *      через GET /products/{id}, кэшируем пару (productId → article)
- *      в памяти процесса, дальше шаг 1.
- *
- * Снапшот товаров для всего этого больше не требуется.
+ * Никакого snapshot товаров и никакого `GET /products/{id}`: с `?search=`
+ * мы получаем сразу и сам товар, и его реальный article/code/barcode,
+ * поэтому матч строим из того же ответа.
  */
 
-/** Кэш product_id → article на время жизни процесса. Карточка товара в РО
- *  меняется крайне редко; на холодном инстансе максимум 1 запрос на
- *  запчасть, на горячем — 0. */
-const articleCache = new Map<string, string>();
+type StripField = "article" | "code" | "barcode" | "title";
 
 const stripSpaces = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+const safeStr = (v: unknown): string => {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return "";
+};
+
+type RoStockItemEx = RoStockItem & {
+  article?: string | null;
+  code?: string | null;
+  barcode?: string | null;
+  barcodes?: Array<string | { code?: string }> | null;
+};
+
+/** Все «отпечатки» товара для сравнения с искомым ID — нормализованные. */
+const productFingerprints = (it: RoStockItemEx): Set<string> => {
+  const out = new Set<string>();
+  const push = (v: unknown) => {
+    const s = stripSpaces(safeStr(v));
+    if (s) out.add(s);
+  };
+  push(it.article);
+  push(it.code);
+  push(it.barcode);
+  if (Array.isArray(it.barcodes)) {
+    for (const b of it.barcodes) {
+      if (typeof b === "string") push(b);
+      else if (b && typeof b === "object") push(b.code);
+    }
+  }
+  return out;
+};
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       key?: string;
       partArticle?: string | null;
+      partBarcode?: string | null;
+      partCode?: string | null;
       partProductId?: string | null;
-      // Старые поля оставляем для обратной совместимости.
-      roId?: number;
+      // Старая совместимость
       roArticle?: string | null;
       warehouseId?: number;
     };
 
-    const explicitArticle = (
-      body.partArticle ??
-      body.roArticle ??
-      ""
-    )
-      .replace(/\s+/g, "")
-      .trim();
+    const clean = (v?: string | null) => {
+      if (!v) return "";
+      return v.replace(/\s+/g, "").trim();
+    };
 
-    const productId = (body.partProductId ?? "").replace(/\s+/g, "").trim();
+    // Пробы в порядке убывания «уникальности».
+    type Probe = { kind: StripField | "productId"; value: string };
+    const probesRaw: Probe[] = [
+      { kind: "barcode", value: clean(body.partBarcode) },
+      {
+        kind: "article",
+        value: clean(body.partArticle ?? body.roArticle),
+      },
+      { kind: "code", value: clean(body.partCode) },
+      { kind: "productId", value: clean(body.partProductId) },
+    ];
+    // Уникализируем (часто Код == ID).
+    const seen = new Set<string>();
+    const probes = probesRaw.filter((p) => {
+      if (!p.value) return false;
+      if (seen.has(p.value)) return false;
+      seen.add(p.value);
+      return true;
+    });
 
-    // Резолвим финальный артикул, по которому будем обходить склады.
-    let article = explicitArticle;
-    let resolvedFromProductId = false;
-
-    if (!article && productId) {
-      const cached = articleCache.get(productId);
-      if (cached) {
-        article = cached;
-      } else {
-        const card = await getProductById(productId);
-        const fromCard = card?.article?.trim() ?? "";
-        if (fromCard) {
-          article = fromCard;
-          articleCache.set(productId, fromCard);
-          resolvedFromProductId = true;
-        } else {
-          return NextResponse.json({
-            ok: false,
-            error: `В РО не нашлась карточка товара по ID ${productId} — возможно, удалён или ID указан неверно.`,
-          });
-        }
-      }
-    }
-
-    if (!article) {
+    if (probes.length === 0) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "У запчасти не указан ни ID, ни артикул в исходной таблице. Заполните одно из полей.",
+            "У запчасти не заполнен ни один идентификатор (ID, Код, Артикул, Штрихкод). Заполните хотя бы одно поле в исходной таблице.",
         },
         { status: 400 },
       );
@@ -99,9 +122,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Приоритет: «Сервис» и «Б/У» — основные у клиента, опрашиваем
-    // первыми, чтобы быстрее найти ненулевой остаток (но всё равно
-    // обходим всё, общий объём складов 16 — это укладывается в 1-2 сек).
+    // «Сервис» и «Б/У» — основные склады, опрашиваем первыми (всё равно
+    // обходим все 16, но так первая ненулевая позиция найдётся быстрее).
     const isPrimary = (title: string) => {
       const t = title.toLowerCase();
       return t.includes("сервис") || t.includes("б/у") || t.includes("бу");
@@ -111,88 +133,98 @@ export async function POST(req: Request) {
       const bp = isPrimary(b.title) ? 0 : 1;
       return ap - bp;
     });
-
     const warehouses = body.warehouseId
       ? orderedWarehouses.filter((w) => w.id === body.warehouseId)
       : orderedWarehouses;
-
-    const normalizedArticle = stripSpaces(article);
 
     type WhResult = {
       warehouseId: number;
       warehouseTitle: string;
       quantity: number;
-      match: RoStockItem | null;
+      match: RoStockItemEx | null;
     };
 
-    const probeWarehouse = async (w: {
-      id: number;
-      title: string;
-    }): Promise<WhResult> => {
-      // search в РО индексирован по article и title — для конкретного
-      // артикула выдача обычно 1-2 строки.
-      const items = await getStock(w.id, { q: article });
-      const match =
-        items.find((it) => {
-          const a = (it as RoStockItem & { article?: string }).article;
-          return a ? stripSpaces(a) === normalizedArticle : false;
-        }) ?? null;
-      const qty = match
-        ? Number(match.residue ?? match.quantity ?? match.amount ?? 0)
-        : 0;
-      return {
-        warehouseId: w.id,
-        warehouseTitle: w.title,
-        quantity: qty,
-        match,
-      };
+    /** Один обход всех складов с конкретным `?search=`. */
+    const sweep = async (
+      query: string,
+      probeValueNorm: string,
+    ): Promise<{ found: WhResult[]; total: number }> => {
+      const results = await Promise.all(
+        warehouses.map(async (w): Promise<WhResult> => {
+          const items = (await getStock(w.id, { q: query })) as RoStockItemEx[];
+          // Точный матч: ищем товар, у которого ХОТЯ БЫ ОДИН из его
+          // собственных идентификаторов точно совпадает с тем, что мы
+          // искали — без частичных совпадений по title.
+          const match =
+            items.find((it) =>
+              productFingerprints(it).has(probeValueNorm),
+            ) ?? null;
+          const qty = match
+            ? Number(match.residue ?? match.quantity ?? match.amount ?? 0)
+            : 0;
+          return {
+            warehouseId: w.id,
+            warehouseTitle: w.title,
+            quantity: qty,
+            match,
+          };
+        }),
+      );
+      const found = results.filter((r) => r.match);
+      const total = found.reduce((s, r) => s + r.quantity, 0);
+      return { found, total };
     };
 
-    const results = await Promise.all(warehouses.map(probeWarehouse));
-
-    let totalQty = 0;
-    let foundItem: RoStockItem | null = null;
-    const perWarehouse: Array<{
-      warehouseId: number;
-      warehouseTitle: string;
-      quantity: number;
+    // Лог попыток, который вернём клиенту, чтобы было видно глазами,
+    // какой идентификатор реально нашёл товар (или почему не нашёл).
+    const tried: Array<{
+      kind: Probe["kind"];
+      value: string;
+      hits: number;
     }> = [];
 
-    for (const r of results) {
-      if (r.match) {
-        totalQty += r.quantity;
-        perWarehouse.push({
-          warehouseId: r.warehouseId,
-          warehouseTitle: r.warehouseTitle,
-          quantity: r.quantity,
-        });
-        foundItem = r.match;
+    let chosen: { probe: Probe; result: Awaited<ReturnType<typeof sweep>> } | null = null;
+
+    for (const p of probes) {
+      const norm = stripSpaces(p.value);
+      const r = await sweep(p.value, norm);
+      tried.push({ kind: p.kind, value: p.value, hits: r.found.length });
+      if (r.found.length > 0) {
+        chosen = { probe: p, result: r };
+        break;
       }
     }
 
-    if (!foundItem) {
+    if (!chosen) {
       return NextResponse.json({
         ok: true,
         found: false,
-        article,
-        productId: productId || null,
-        resolvedFromProductId,
+        tried,
         fetchedAt: new Date().toISOString(),
       });
     }
+
+    const { probe, result } = chosen;
+    const firstMatch = result.found[0]!.match!;
 
     return NextResponse.json({
       ok: true,
       found: true,
       product: {
-        id: foundItem.product_id ?? foundItem.id ?? null,
-        title: foundItem.product_title ?? foundItem.title ?? "",
-        article,
+        id: firstMatch.product_id ?? firstMatch.id ?? null,
+        title: firstMatch.product_title ?? firstMatch.title ?? "",
+        article: firstMatch.article ?? null,
+        code: firstMatch.code ?? null,
+        barcode: firstMatch.barcode ?? null,
       },
-      quantity: totalQty,
-      perWarehouse,
-      productId: productId || null,
-      resolvedFromProductId,
+      matchedBy: { kind: probe.kind, value: probe.value },
+      quantity: result.total,
+      perWarehouse: result.found.map((r) => ({
+        warehouseId: r.warehouseId,
+        warehouseTitle: r.warehouseTitle,
+        quantity: r.quantity,
+      })),
+      tried,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {

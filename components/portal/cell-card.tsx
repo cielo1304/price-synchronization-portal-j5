@@ -73,20 +73,25 @@ export function CellCard({ cell, selected, onSelect }: Props) {
   const isMismatch = ro.state === "resolved" && !ro.inSync;
 
   // Кнопка «Запросить остатки» появляется только для ячеек запчасти.
-  // Привязка к товару в РО двухступенчатая: либо короткий артикул
-  // (`partArticle`, например «211149»), либо внутренний product_id
-  // (`partProductId`, например «14870175»). Хотя бы одно должно быть
-  // заполнено в исходной таблице, иначе остаток искать нельзя.
+  // У запчасти в исходной таблице может быть до 4 идентификаторов:
+  // ID, Код, Артикул, Штрихкод. Сервер сам выбирает, какой из них
+  // отдать в `?search=` РО — мы отправляем все непустые.
   const isPartCell =
     cell.roMatch?.kind === "part-retail" ||
     cell.roMatch?.kind === "part-purchase";
   const stockKey = isPartCell ? cell.roMatch!.key : null;
-  const partArticle = isPartCell
-    ? (cell.roMatch!.partArticle ?? null)
-    : null;
+  const partArticle = isPartCell ? (cell.roMatch!.partArticle ?? null) : null;
   const partProductId = isPartCell
     ? (cell.roMatch!.partProductId ?? null)
     : null;
+  const partCode = isPartCell ? (cell.roMatch!.partCode ?? null) : null;
+  const partBarcode = isPartCell ? (cell.roMatch!.partBarcode ?? null) : null;
+  const hasAnyPartId = !!(
+    partArticle ||
+    partProductId ||
+    partCode ||
+    partBarcode
+  );
   const liveStock = stockKey ? stockByKey.get(stockKey) : undefined;
   const stockLoading = stockKey !== null && loadingStockKey === stockKey;
 
@@ -94,13 +99,18 @@ export function CellCard({ cell, selected, onSelect }: Props) {
     e.stopPropagation();
     if (!stockKey) return;
     setStockError(null);
-    if (!partArticle && !partProductId) {
+    if (!hasAnyPartId) {
       setStockError(
-        "У этой запчасти не заполнен ни ID, ни артикул в исходной таблице.",
+        "У этой запчасти не заполнен ни один идентификатор (ID, Код, Артикул, Штрихкод).",
       );
       return;
     }
-    const res = await requestStock(stockKey, { partArticle, partProductId });
+    const res = await requestStock(stockKey, {
+      partArticle,
+      partProductId,
+      partCode,
+      partBarcode,
+    });
     if (!res.ok) setStockError(res.error ?? "Ошибка");
   };
 
@@ -292,6 +302,69 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               Нажмите «Запросить», чтобы получить актуальный остаток.
             </div>
           )}
+
+          {/* Диагностика: что у нас в исходнике и что сработало в РО.
+              Показываем всегда — чтобы было сразу видно, какие колонки
+              реально заполнены в портале и почему `?search=` нашёл
+              именно этот товар. */}
+          <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-background/60 p-1.5">
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+              исходник → РО
+            </div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[10px]">
+              {(
+                [
+                  ["ID", partProductId, "productId"],
+                  ["Код", partCode, "code"],
+                  ["Артикул", partArticle, "article"],
+                  ["Штрихкод", partBarcode, "barcode"],
+                ] as const
+              ).map(([label, value, kind]) => {
+                const tried = liveStock?.tried?.find((t) => t.kind === kind);
+                const isWinner = liveStock?.matchedBy?.kind === kind;
+                return (
+                  <div
+                    key={label}
+                    className={cn(
+                      "flex items-center justify-between gap-1",
+                      isWinner && "rounded bg-money-muted px-1 text-money",
+                    )}
+                  >
+                    <span className="text-muted-foreground">{label}:</span>
+                    <span
+                      className={cn(
+                        "tabular-nums",
+                        !value && "text-muted-foreground/50",
+                      )}
+                    >
+                      {value ?? "—"}
+                      {tried && (
+                        <span
+                          className={cn(
+                            "ml-1 text-[9px]",
+                            tried.hits > 0 ? "text-money" : "text-rose-600",
+                          )}
+                        >
+                          [{tried.hits}]
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {liveStock?.matchedBy && (
+              <div className="text-[9px] text-money">
+                ✓ найдено по {liveStock.matchedBy.kind}: «
+                {liveStock.matchedBy.value}»
+              </div>
+            )}
+            {liveStock?.product && (
+              <div className="truncate text-[9px] text-muted-foreground">
+                РО: {liveStock.product.title}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

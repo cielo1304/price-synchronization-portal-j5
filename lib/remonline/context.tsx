@@ -51,6 +51,18 @@ export type StockReading = {
     quantity: number;
   }>;
   found: boolean;
+  /** Какой именно идентификатор сработал в `?search=` (если нашли). */
+  matchedBy?: { kind: string; value: string } | null;
+  /** Все попытки в порядке, в каком сервер их перебирал — для UI-отчёта. */
+  tried?: Array<{ kind: string; value: string; hits: number }>;
+  /** Полная карточка найденного товара из РО. */
+  product?: {
+    id: number | string | null;
+    title: string;
+    article: string | null;
+    code: string | null;
+    barcode: string | null;
+  } | null;
 };
 
 type CtxValue = {
@@ -69,13 +81,19 @@ type CtxValue = {
   /** Идёт ли запрос остатка для конкретной запчасти. */
   loadingStockKey: string | null;
   /**
-   * Запросить остаток одной запчасти. Сервер сам выберет привязку:
-   * если есть `partArticle` — ищет по нему, иначе резолвит из
-   * `partProductId` через GET /products/{id}.
+   * Запросить остаток одной запчасти. Можно передать любой набор
+   * идентификаторов; сервер перебирает их по убыванию уникальности
+   * (штрихкод → артикул → код → ID) и берёт первый, который дал
+   * точный матч в РО.
    */
   requestStock: (
     key: string,
-    bind: { partArticle?: string | null; partProductId?: string | null },
+    bind: {
+      partArticle?: string | null;
+      partProductId?: string | null;
+      partCode?: string | null;
+      partBarcode?: string | null;
+    },
   ) => Promise<{ ok: boolean; error?: string; reading?: StockReading }>;
 
   /** Сводка конфликтов по устройствам — для индикаторов в каталоге слева. */
@@ -194,6 +212,8 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
             key,
             partArticle: bind.partArticle ?? null,
             partProductId: bind.partProductId ?? null,
+            partCode: bind.partCode ?? null,
+            partBarcode: bind.partBarcode ?? null,
           }),
         });
         const json = await res.json();
@@ -204,6 +224,9 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
           fetchedAt: json.fetchedAt,
           perWarehouse: json.perWarehouse,
           found: !!json.found,
+          matchedBy: json.matchedBy ?? null,
+          tried: json.tried ?? [],
+          product: json.product ?? null,
         };
         setStockByKey((prev) => {
           const next = new Map(prev);
