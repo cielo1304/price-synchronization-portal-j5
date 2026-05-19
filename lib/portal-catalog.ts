@@ -253,6 +253,10 @@ function recordToPosition(rec: RawSource): Position {
     });
 
     const partRoKey = part?.name ? normalizeName(part.name) : undefined;
+    // partId из исходной таблицы — это артикул в Remonline (формат «49462 586»).
+    // Передаём его в Cell.roMatch.partId, чтобы запрос остатка шёл строго
+    // по артикулу, без необходимости сначала загружать snapshot товаров.
+    const partArticle = part?.partId ?? null;
 
     stages.push({
       id: "purchase",
@@ -271,7 +275,7 @@ function recordToPosition(rec: RawSource): Position {
             ? undefined
             : "Нет данных от поставщиков — нужна ручная закупка",
           roMatch: partRoKey
-            ? { kind: "part-purchase", key: partRoKey }
+            ? { kind: "part-purchase", key: partRoKey, partId: partArticle }
             : undefined,
         },
       ],
@@ -317,7 +321,7 @@ function recordToPosition(rec: RawSource): Position {
             ? `Уходит в ${part.sheetRefRetail} (Q-колонка БД_ЗАПЧАСТИ)`
             : undefined,
           roMatch: partRoKey
-            ? { kind: "part-retail", key: partRoKey }
+            ? { kind: "part-retail", key: partRoKey, partId: partArticle }
             : undefined,
         },
       ],
@@ -643,7 +647,7 @@ export function deviceSortKey(device: string): [number, number, string] {
   const m = device.match(/iPhone\s+(\d+)/i);
   const major = m ? parseInt(m[1], 10) : 0;
 
-  // Уровень модификации внутри одного поколения.
+  // Уров��нь модификации внутри одного поколения.
   let tier = 5; // base
   if (/Pro\s*Max/i.test(device)) tier = 1;
   else if (/Pro/i.test(device)) tier = 2;

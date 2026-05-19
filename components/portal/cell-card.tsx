@@ -73,11 +73,13 @@ export function CellCard({ cell, selected, onSelect }: Props) {
   const isMismatch = ro.state === "resolved" && !ro.inSync;
 
   // Кнопка «Запросить остатки» появляется только для ячеек запчасти,
-  // у которых есть привязка к РО. Свежий ответ хранится в context.
+  // у которых в каталоге заполнен partId (ID запчасти из исходной
+  // таблицы). Без partId привязки нет, остаток искать нельзя.
   const isPartCell =
     cell.roMatch?.kind === "part-retail" ||
     cell.roMatch?.kind === "part-purchase";
   const stockKey = isPartCell ? cell.roMatch!.key : null;
+  const partArticle = isPartCell ? (cell.roMatch!.partId ?? null) : null;
   const liveStock = stockKey ? stockByKey.get(stockKey) : undefined;
   const stockLoading = stockKey !== null && loadingStockKey === stockKey;
 
@@ -85,20 +87,13 @@ export function CellCard({ cell, selected, onSelect }: Props) {
     e.stopPropagation();
     if (!stockKey) return;
     setStockError(null);
-    // Привязка к РО строится только через snapshot товаров. Без него
-    // (или если запчасть в snapshot не нашлась) запрос остатка смысла
-    // не имеет — пусть пользователь сначала загрузит/обновит snapshot.
-    if (ro.state !== "resolved") {
+    if (!partArticle) {
       setStockError(
-        ro.state === "snapshot-missing"
-          ? "Сначала загрузите snapshot товаров РО"
-          : ro.state === "key-not-found"
-            ? `Запчасть «${ro.expectedKey}» не найдена в snapshot РО`
-            : "Нет привязки к РО",
+        "У этой запчасти не заполнен ID в исходной таблице — без него остаток в РО не найти.",
       );
       return;
     }
-    const res = await requestStock(stockKey, ro.roId, ro.roArticle);
+    const res = await requestStock(stockKey, partArticle);
     if (!res.ok) setStockError(res.error ?? "Ошибка");
   };
 

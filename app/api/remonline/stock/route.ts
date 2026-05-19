@@ -11,35 +11,40 @@ export const maxDuration = 60;
 /**
  * Live-остаток одной запчасти.
  *
- * Привязка строго по `roId` — идентификатору товара в РО, который мы знаем
- * из snapshot товаров. Никаких поисков по словам / нормализованному имени:
- * у каждой запчасти в портале есть железная связь с одной записью в РО,
- * её и используем.
+ * Привязка строго по `partArticle` — это артикул товара в РО (поле
+ * `partId` в исходной таблице, формат «49462 586»). Артикул уникален в
+ * пределах базы РО, проиндексирован параметром `?search=` и совпадает
+ * 1-к-1 с конкретной номенклатурной позицией.
  *
- * Параметр `roArticle` помогает РО сузить выдачу до 1-2 записей через
- * `?search=<article>`. Если артикул отсутствует — тянем первую страницу
- * товаров склада и фильтруем локально по id.
+ * Поэтому никаких snapshot-таблиц для определения остатка не нужно:
+ * шлём один параллельный запрос на каждый склад вида
+ *   GET /warehouse/goods/{w}?search=49462%20586
+ * и фильтруем ответ по точному `article === partArticle`. Если в ответе
+ * 0 записей — на этом складе товара нет, quantity=0.
  */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       key?: string;
+      // Старые поля оставляем для обратной совместимости с уже
+      // развёрнутыми клиентами; основная привязка теперь через partArticle.
       roId?: number;
       roArticle?: string | null;
+      partArticle?: string | null;
       warehouseId?: number;
     };
 
-    if (!body.roId) {
+    const article = (body.partArticle ?? body.roArticle ?? "").trim();
+    if (!article) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Нет привязки к РО. Загрузите snapshot товаров — он сопоставит запчасти по ID.",
+            "У запчасти нет partId в каталоге — заполните «ID запчасти» в исходной таблице.",
         },
         { status: 400 },
       );
     }
-    const roId = body.roId;
 
     const allWarehouses = await listWarehouses();
     if (allWarehouses.length === 0) {
@@ -65,13 +70,6 @@ export async function POST(req: Request) {
       ? orderedWarehouses.filter((w) => w.id === body.warehouseId)
       : orderedWarehouses;
 
-    // Если есть артикул — search по нему точно сузит выдачу до нескольких
-    // записей. Если нет — search не передаём, тянем первую страницу
-    // (50 товаров) и ищем нужный id локально.
-    const filter: { q?: string } = body.roArticle
-      ? { q: body.roArticle }
-      : {};
-
     type WhResult = {
       warehouseId: number;
       warehouseTitle: string;
@@ -80,16 +78,31 @@ export async function POST(req: Request) {
     };
 
     /**
-     * Один склад: ищет ровно тот товар, чей id === roId. Никакого fuzzy.
+     * Сравниваем артикул нечувствительно к пробелам и регистру.
+     * В исходной таблице partId хранится как «49462 586» с неразрывным
+     * пробелом, в РО артикул может быть «49462586» или «49462 586» —
+     * нормализуем оба до сравнения.
+     */
+    const stripSpaces = (s: string) =>
+      s.replace(/\s+/g, "").toLowerCase();
+    const normalizedArticle = stripSpaces(article);
+
+    /**
+     * Один склад: ищет товар по точному артикулу.
      * Если на этом складе товара нет — quantity=0, match=null.
      */
     const probeWarehouse = async (w: {
       id: number;
       title: string;
     }): Promise<WhResult> => {
-      const items = await getStock(w.id, filter);
+      // search в РО индексирован и по article, и по title — для артикула
+      // выдача обычно 1-2 строки, чего хватает для точного матча.
+      const items = await getStock(w.id, { q: article });
       const match =
-        items.find((it) => (it.product_id ?? it.id) === roId) ?? null;
+        items.find((it) => {
+          const a = (it as RoStockItem & { article?: string }).article;
+          return a ? stripSpaces(a) === normalizedArticle : false;
+        }) ?? null;
       const qty = match
         ? Number(match.residue ?? match.quantity ?? match.amount ?? 0)
         : 0;
@@ -101,8 +114,7 @@ export async function POST(req: Request) {
       };
     };
 
-    // Все склады параллельно: 16 запросов × ~400мс ≈ 600мс с учётом
-    // конкурентности vs ~10 сек последовательно.
+    // Все склады параллельно: ~16 запросов × 400мс ≈ 600мс.
     const results = await Promise.all(warehouses.map(probeWarehouse));
 
     let totalQty = 0;
@@ -129,6 +141,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         found: false,
+        article,
         fetchedAt: new Date().toISOString(),
       });
     }
@@ -139,6 +152,7 @@ export async function POST(req: Request) {
       product: {
         id: foundItem.product_id ?? foundItem.id ?? null,
         title: foundItem.product_title ?? foundItem.title ?? "",
+        article,
       },
       quantity: totalQty,
       perWarehouse,

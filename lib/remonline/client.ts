@@ -111,6 +111,8 @@ export type RoStockItem = {
   id?: number;
   product_title?: string;
   title?: string;
+  /** Артикул товара. РО индексирует его в `?search=` и отдаёт в ответе. */
+  article?: string | null;
   warehouse_id?: number;
   /**
    * Остаток. v2 в разных эндпоинтах называет это поле по-разному
