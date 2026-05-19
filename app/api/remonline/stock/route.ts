@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   listWarehouses,
   getStock,
+  getProductById,
   type RoStockItem,
 } from "@/lib/remonline/client";
 
@@ -217,6 +218,41 @@ export async function POST(req: Request) {
       if (r.found.length > 0) {
         chosen = { probe: p, result: r };
         break;
+      }
+
+      // Спасательный круг для productId: РО `?search=` индексирует только
+      // title и article — по полю «Код» (которое часто == ID) он не ищет.
+      // Тянем карточку товара точечно по ID и используем её настоящие
+      // barcode / article / title как поисковый запрос. Это закрывает
+      // случай, когда в исходной таблице штрихкод и артикул пустые,
+      // а реальный штрихкод есть только в карточке РО.
+      if (p.kind === "productId") {
+        const card = await getProductById(p.value).catch(() => null);
+        const fallbacks = [
+          { kind: "barcode" as const, value: card?.barcode ?? "" },
+          { kind: "article" as const, value: card?.article ?? "" },
+          { kind: "article" as const, value: card?.title ?? "" },
+        ]
+          .map((x) => ({ ...x, value: stripSpaces(safeStr(x.value)) }))
+          .filter((x) => x.value && !seen.has(x.value));
+        for (const f of fallbacks) {
+          seen.add(f.value);
+          // Сравниваем fingerprint товара именно с тем значением, которое
+          // ищем (barcode/article), а не с исходным productId — потому
+          // что в fingerprint попадают article/code/barcode, а product_id
+          // там не лежит.
+          const r2 = await sweep(f.kind, f.value, f.value);
+          tried.push({
+            kind: f.kind,
+            value: `${f.value} (по ID ${p.value})`,
+            hits: r2.found.length,
+          });
+          if (r2.found.length > 0) {
+            chosen = { probe: { kind: f.kind, value: f.value }, result: r2 };
+            break;
+          }
+        }
+        if (chosen) break;
       }
     }
 
