@@ -218,6 +218,42 @@ export async function fetchAllProducts(
 }
 
 /**
+ * Карточка одного товара по внутреннему product_id.
+ *
+ * Используется чтобы вытащить article у товара, когда в исходной
+ * таблице есть только product_id, а в `?search=` РО индексирует только
+ * article и title. Пробуем сразу два эндпоинта (документированный
+ * `/products/{id}` и `/warehouse/goods/{id}`), потому что на разных
+ * аккаунтах активен один или другой.
+ *
+ * Возвращает `null`, если ни один из эндпоинтов не отвечает 200 —
+ * клиентский код тогда решит, как быть.
+ */
+export async function getProductById(
+  productId: number | string,
+): Promise<RoProduct | null> {
+  const tryEndpoint = async (path: string): Promise<RoProduct | null> => {
+    try {
+      const json = await apiGet<RoProduct | { data?: RoProduct }>(path);
+      const obj =
+        json && typeof json === "object" && "data" in json
+          ? (json as { data?: RoProduct }).data
+          : (json as RoProduct);
+      return obj && typeof obj === "object" && obj.id ? obj : null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("HTTP 404")) return null;
+      throw err;
+    }
+  };
+
+  return (
+    (await tryEndpoint(`/products/${productId}`)) ??
+    (await tryEndpoint(`/warehouse/goods/${productId}`))
+  );
+}
+
+/**
  * Остатки по складу. GET /warehouse/goods/{warehouse_id}?search=<title>
  *
  * У РО нет отдельного `/stock` — остаток лежит в самом объекте товара

@@ -69,15 +69,13 @@ type CtxValue = {
   /** Идёт ли запрос остатка для конкретной запчасти. */
   loadingStockKey: string | null;
   /**
-   * Запросить остаток одной запчасти по артикулу.
-   *
-   * Привязка железная — через partArticle (= partId из исходной таблицы,
-   * формат «49462 586»). snapshot товаров для остатка не нужен:
-   * сервер ищет в РО строго по артикулу через `?search=`.
+   * Запросить остаток одной запчасти. Сервер сам выберет привязку:
+   * если есть `partArticle` — ищет по нему, иначе резолвит из
+   * `partProductId` через GET /products/{id}.
    */
   requestStock: (
     key: string,
-    partArticle: string,
+    bind: { partArticle?: string | null; partProductId?: string | null },
   ) => Promise<{ ok: boolean; error?: string; reading?: StockReading }>;
 
   /** Сводка конфликтов по устройствам — для индикаторов в каталоге слева. */
@@ -186,13 +184,17 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
   const [loadingStockKey, setLoadingStockKey] = useState<string | null>(null);
 
   const requestStock = useCallback<CtxValue["requestStock"]>(
-    async (key, partArticle) => {
+    async (key, bind) => {
       setLoadingStockKey(key);
       try {
         const res = await fetch("/api/remonline/stock", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, partArticle }),
+          body: JSON.stringify({
+            key,
+            partArticle: bind.partArticle ?? null,
+            partProductId: bind.partProductId ?? null,
+          }),
         });
         const json = await res.json();
         if (!json.ok)

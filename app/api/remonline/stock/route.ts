@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   listWarehouses,
   getStock,
+  getProductById,
   type RoStockItem,
 } from "@/lib/remonline/client";
 
@@ -11,36 +12,80 @@ export const maxDuration = 60;
 /**
  * Live-остаток одной запчасти.
  *
- * Привязка строго по `partArticle` — это артикул товара в РО (поле
- * `partId` в исходной таблице, формат «49462 586»). Артикул уникален в
- * пределах базы РО, проиндексирован параметром `?search=` и совпадает
- * 1-к-1 с конкретной номенклатурной позицией.
+ * Привязка к товару в РО двухступенчатая:
  *
- * Поэтому никаких snapshot-таблиц для определения остатка не нужно:
- * шлём один параллельный запрос на каждый склад вида
- *   GET /warehouse/goods/{w}?search=49462%20586
- * и фильтруем ответ по точному `article === partArticle`. Если в ответе
- * 0 записей — на этом складе товара нет, quantity=0.
+ *   1. Если в каталоге заполнен `partArticle` (короткий артикул, по
+ *      которому РО ищет в `?search=`, например «211149») — идём по нему
+ *      сразу: один параллельный обход складов и точный матч по article.
+ *
+ *   2. Если есть только `partProductId` (внутренний ID товара РО, в
+ *      исходной таблице записан как «14870 175» с пробелом-разделителем
+ *      тысяч) — `?search=` по нему НЕ работает. Сначала резолвим article
+ *      через GET /products/{id}, кэшируем пару (productId → article)
+ *      в памяти процесса, дальше шаг 1.
+ *
+ * Снапшот товаров для всего этого больше не требуется.
  */
+
+/** Кэш product_id → article на время жизни процесса. Карточка товара в РО
+ *  меняется крайне редко; на холодном инстансе максимум 1 запрос на
+ *  запчасть, на горячем — 0. */
+const articleCache = new Map<string, string>();
+
+const stripSpaces = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       key?: string;
-      // Старые поля оставляем для обратной совместимости с уже
-      // развёрнутыми клиентами; основная привязка теперь через partArticle.
+      partArticle?: string | null;
+      partProductId?: string | null;
+      // Старые поля оставляем для обратной совместимости.
       roId?: number;
       roArticle?: string | null;
-      partArticle?: string | null;
       warehouseId?: number;
     };
 
-    const article = (body.partArticle ?? body.roArticle ?? "").trim();
+    const explicitArticle = (
+      body.partArticle ??
+      body.roArticle ??
+      ""
+    )
+      .replace(/\s+/g, "")
+      .trim();
+
+    const productId = (body.partProductId ?? "").replace(/\s+/g, "").trim();
+
+    // Резолвим финальный артикул, по которому будем обходить склады.
+    let article = explicitArticle;
+    let resolvedFromProductId = false;
+
+    if (!article && productId) {
+      const cached = articleCache.get(productId);
+      if (cached) {
+        article = cached;
+      } else {
+        const card = await getProductById(productId);
+        const fromCard = card?.article?.trim() ?? "";
+        if (fromCard) {
+          article = fromCard;
+          articleCache.set(productId, fromCard);
+          resolvedFromProductId = true;
+        } else {
+          return NextResponse.json({
+            ok: false,
+            error: `В РО не нашлась карточка товара по ID ${productId} — возможно, удалён или ID указан неверно.`,
+          });
+        }
+      }
+    }
+
     if (!article) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "У запчасти нет partId в каталоге — заполните «ID запчасти» в исходной таблице.",
+            "У запчасти не указан ни ID, ни артикул в исходной таблице. Заполните одно из полей.",
         },
         { status: 400 },
       );
@@ -54,8 +99,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Приоритет: «Склад Сервис» и «Склад Б/У» — основные у клиента,
-    // их опрашиваем первыми, чтобы быстрее найти ненулевой остаток.
+    // Приоритет: «Сервис» и «Б/У» — основные у клиента, опрашиваем
+    // первыми, чтобы быстрее найти ненулевой остаток (но всё равно
+    // обходим всё, общий объём складов 16 — это укладывается в 1-2 сек).
     const isPrimary = (title: string) => {
       const t = title.toLowerCase();
       return t.includes("сервис") || t.includes("б/у") || t.includes("бу");
@@ -70,6 +116,8 @@ export async function POST(req: Request) {
       ? orderedWarehouses.filter((w) => w.id === body.warehouseId)
       : orderedWarehouses;
 
+    const normalizedArticle = stripSpaces(article);
+
     type WhResult = {
       warehouseId: number;
       warehouseTitle: string;
@@ -77,26 +125,12 @@ export async function POST(req: Request) {
       match: RoStockItem | null;
     };
 
-    /**
-     * Сравниваем артикул нечувствительно к пробелам и регистру.
-     * В исходной таблице partId хранится как «49462 586» с неразрывным
-     * пробелом, в РО артикул может быть «49462586» или «49462 586» —
-     * нормализуем оба до сравнения.
-     */
-    const stripSpaces = (s: string) =>
-      s.replace(/\s+/g, "").toLowerCase();
-    const normalizedArticle = stripSpaces(article);
-
-    /**
-     * Один склад: ищет товар по точному артикулу.
-     * Если на этом складе товара нет — quantity=0, match=null.
-     */
     const probeWarehouse = async (w: {
       id: number;
       title: string;
     }): Promise<WhResult> => {
-      // search в РО индексирован и по article, и по title — для артикула
-      // выдача обычно 1-2 строки, чего хватает для точного матча.
+      // search в РО индексирован по article и title — для конкретного
+      // артикула выдача обычно 1-2 строки.
       const items = await getStock(w.id, { q: article });
       const match =
         items.find((it) => {
@@ -114,7 +148,6 @@ export async function POST(req: Request) {
       };
     };
 
-    // Все склады параллельно: ~16 запросов × 400мс ≈ 600мс.
     const results = await Promise.all(warehouses.map(probeWarehouse));
 
     let totalQty = 0;
@@ -142,6 +175,8 @@ export async function POST(req: Request) {
         ok: true,
         found: false,
         article,
+        productId: productId || null,
+        resolvedFromProductId,
         fetchedAt: new Date().toISOString(),
       });
     }
@@ -156,6 +191,8 @@ export async function POST(req: Request) {
       },
       quantity: totalQty,
       perWarehouse,
+      productId: productId || null,
+      resolvedFromProductId,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {

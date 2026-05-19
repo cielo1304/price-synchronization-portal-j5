@@ -253,10 +253,24 @@ function recordToPosition(rec: RawSource): Position {
     });
 
     const partRoKey = part?.name ? normalizeName(part.name) : undefined;
-    // partId из исходной таблицы — это артикул в Remonline (формат «49462 586»).
-    // Передаём его в Cell.roMatch.partId, чтобы запрос остатка шёл строго
-    // по артикулу, без необходимости сначала загружать snapshot товаров.
-    const partArticle = part?.partId ?? null;
+    // В исходной таблице у запчасти может быть две колонки:
+    //   • product_id — внутренний ID товара в РО (например «14870 175»),
+    //     лежит в part.partId. По нему РО НЕ ищет в `?search=` — только
+    //     через GET /products/{id}, чтобы оттуда вытащить article.
+    //   • article — короткий артикул («211149»), по которому РО ищет
+    //     в /warehouse/goods/?search=. Если он заполнен в JSON
+    //     (part.partArticle) — используем напрямую и обходимся одним
+    //     запросом. Иначе сервер сам резолвнет article из productId.
+    // Пробелы в product_id — визуальные разделители тысяч, режем их.
+    const rawProductId = (part as { partId?: string | null } | null)?.partId;
+    const partProductId = rawProductId
+      ? rawProductId.replace(/\s+/g, "").trim() || null
+      : null;
+    const rawArticle = (part as { partArticle?: string | null } | null)
+      ?.partArticle;
+    const partArticleRaw = rawArticle
+      ? rawArticle.replace(/\s+/g, "").trim() || null
+      : null;
 
     stages.push({
       id: "purchase",
@@ -275,7 +289,12 @@ function recordToPosition(rec: RawSource): Position {
             ? undefined
             : "Нет данных от поставщиков — нужна ручная закупка",
           roMatch: partRoKey
-            ? { kind: "part-purchase", key: partRoKey, partId: partArticle }
+            ? {
+                kind: "part-purchase",
+                key: partRoKey,
+                partProductId,
+                partArticle: partArticleRaw,
+              }
             : undefined,
         },
       ],
@@ -321,7 +340,12 @@ function recordToPosition(rec: RawSource): Position {
             ? `Уходит в ${part.sheetRefRetail} (Q-колонка БД_ЗАПЧАСТИ)`
             : undefined,
           roMatch: partRoKey
-            ? { kind: "part-retail", key: partRoKey, partId: partArticle }
+            ? {
+                kind: "part-retail",
+                key: partRoKey,
+                partProductId,
+                partArticle: partArticleRaw,
+              }
             : undefined,
         },
       ],

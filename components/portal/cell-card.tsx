@@ -72,14 +72,21 @@ export function CellCard({ cell, selected, onSelect }: Props) {
 
   const isMismatch = ro.state === "resolved" && !ro.inSync;
 
-  // Кнопка «Запросить остатки» появляется только для ячеек запчасти,
-  // у которых в каталоге заполнен partId (ID запчасти из исходной
-  // таблицы). Без partId привязки нет, остаток искать нельзя.
+  // Кнопка «Запросить остатки» появляется только для ячеек запчасти.
+  // Привязка к товару в РО двухступенчатая: либо короткий артикул
+  // (`partArticle`, например «211149»), либо внутренний product_id
+  // (`partProductId`, например «14870175»). Хотя бы одно должно быть
+  // заполнено в исходной таблице, иначе остаток искать нельзя.
   const isPartCell =
     cell.roMatch?.kind === "part-retail" ||
     cell.roMatch?.kind === "part-purchase";
   const stockKey = isPartCell ? cell.roMatch!.key : null;
-  const partArticle = isPartCell ? (cell.roMatch!.partId ?? null) : null;
+  const partArticle = isPartCell
+    ? (cell.roMatch!.partArticle ?? null)
+    : null;
+  const partProductId = isPartCell
+    ? (cell.roMatch!.partProductId ?? null)
+    : null;
   const liveStock = stockKey ? stockByKey.get(stockKey) : undefined;
   const stockLoading = stockKey !== null && loadingStockKey === stockKey;
 
@@ -87,13 +94,13 @@ export function CellCard({ cell, selected, onSelect }: Props) {
     e.stopPropagation();
     if (!stockKey) return;
     setStockError(null);
-    if (!partArticle) {
+    if (!partArticle && !partProductId) {
       setStockError(
-        "У этой запчасти не заполнен ID в исходной таблице — без него остаток в РО не найти.",
+        "У этой запчасти не заполнен ни ID, ни артикул в исходной таблице.",
       );
       return;
     }
-    const res = await requestStock(stockKey, partArticle);
+    const res = await requestStock(stockKey, { partArticle, partProductId });
     if (!res.ok) setStockError(res.error ?? "Ошибка");
   };
 
