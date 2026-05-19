@@ -8,6 +8,7 @@ import {
   Smartphone,
   Sparkles,
   CircleAlert,
+  LayoutList,
 } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
@@ -18,6 +19,7 @@ import {
   type CatalogFilters,
 } from "./catalog-filters";
 import { AddModelDialog } from "./add-model-dialog";
+import { DeviceServicesModal } from "./device-services-modal";
 import { useRemonline } from "@/lib/remonline/context";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [openDevice, setOpenDevice] = useState<string | null>(null);
   const { conflictByDevice } = useRemonline();
 
   const visible = useMemo(() => {
@@ -156,6 +159,26 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                           {conflicts.total}
                         </span>
                       )}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenDevice(group.device);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOpenDevice(group.device);
+                          }
+                        }}
+                        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground"
+                        aria-label={`Открыть таблицу услуг для ${group.device}`}
+                        title="Сводная таблица услуг"
+                      >
+                        <LayoutList className="h-3.5 w-3.5" />
+                      </span>
                       <ChevronDown
                         className={cn(
                           "h-3.5 w-3.5 text-muted-foreground transition-transform",
@@ -260,6 +283,13 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
         onCreated={(firstId) => {
           if (firstId) onSelect(firstId);
         }}
+      />
+
+      <DeviceServicesModal
+        device={openDevice}
+        positions={positions}
+        onClose={() => setOpenDevice(null)}
+        onSelectPosition={onSelect}
       />
     </aside>
   );
