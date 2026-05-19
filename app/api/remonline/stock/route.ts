@@ -144,14 +144,39 @@ export async function POST(req: Request) {
       match: RoStockItemEx | null;
     };
 
-    /** Один обход всех складов с конкретным `?search=`. */
+    /**
+     * Один обход всех складов с подобранным под тип идентификатора
+     * фильтром. РО `?search=` ищет по title+article (по подстроке) и
+     * НЕ ищет по полю «Код» и штрихкоду — поэтому для них нужны узкие
+     * фильтры (`?code=`, `?barcode=`). Если РО их игнорирует, ответом
+     * придут просто первые 50 товаров — fingerprint-матч их всё равно
+     * правильно отфильтрует.
+     */
     const sweep = async (
-      query: string,
+      probeKind: Probe["kind"],
+      value: string,
       probeValueNorm: string,
     ): Promise<{ found: WhResult[]; total: number }> => {
+      // Под каждый kind — свой набор фильтров. Для productId/article
+      // используем `?search=` (это и есть «по артикулу/title»),
+      // для кода и штрихкода — узкие точные фильтры.
+      const filterFor = (): Parameters<typeof getStock>[1] => {
+        switch (probeKind) {
+          case "barcode":
+            return { barcode: value, search: value };
+          case "code":
+            return { code: value, search: value };
+          case "article":
+            return { article: value, search: value };
+          case "productId":
+          default:
+            return { search: value };
+        }
+      };
+      const filter = filterFor();
       const results = await Promise.all(
         warehouses.map(async (w): Promise<WhResult> => {
-          const items = (await getStock(w.id, { q: query })) as RoStockItemEx[];
+          const items = (await getStock(w.id, filter)) as RoStockItemEx[];
           // Точный матч: ищем товар, у которого ХОТЯ БЫ ОДИН из его
           // собственных идентификаторов точно совпадает с тем, что мы
           // искали — без частичных совпадений по title.
@@ -187,7 +212,7 @@ export async function POST(req: Request) {
 
     for (const p of probes) {
       const norm = stripSpaces(p.value);
-      const r = await sweep(p.value, norm);
+      const r = await sweep(p.kind, p.value, norm);
       tried.push({ kind: p.kind, value: p.value, hits: r.found.length });
       if (r.found.length > 0) {
         chosen = { probe: p, result: r };

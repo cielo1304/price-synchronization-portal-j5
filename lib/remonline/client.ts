@@ -209,7 +209,7 @@ export async function listProducts(
 
 /**
  * Тянет все товары конкретного склада по страницам. РО возвращает 50 на страницу.
- * 400 — защитный потолок (при 50 на стр. это 20 000 позиций, реальные
+ * 400 — защитный по��олок (при 50 на стр. это 20 000 позиций, реальные
  * каталоги обычно 1000-3000).
  */
 export async function fetchAllProducts(
@@ -262,25 +262,48 @@ export async function getProductById(
 }
 
 /**
- * Остатки по складу. GET /warehouse/goods/{warehouse_id}?search=<title>
+ * Остатки по складу. GET /warehouse/goods/{warehouse_id}?<filter>
  *
  * У РО нет отдельного `/stock` — остаток лежит в самом объекте товара
- * (поле `residue`). Параметр `search` ищет по подстроке title/article.
+ * (поле `residue`). На этом эндпоинте можно фильтровать несколькими
+ * параметрами, и они сильно отличаются по поведению:
  *
- * Тянем ОДНУ страницу (50 элементов). Если РО понимает search —
- * страница маленькая и ответ быстрый. Если не понимает �� возвращает
- * первые 50 товаров склада — этого достаточно: точное совпадение
- * мы потом отфильтруем локально по нормализованному имени.
- * 10 страниц как было раньше — это 8 секунд × 16 складов = таймаут.
+ *   • `?search=` — ищет по title и article (по подстроке). По «Коду»
+ *     и «Штрихкоду» НЕ ищет — это и был наш баг.
+ *   • `?code=`   — точный фильтр по полю «Код» товара.
+ *   • `?barcode=` — точный фильтр по штрихкоду.
+ *   • `?article=` — точный фильтр по артикулу.
+ *
+ * Не все аккаунты РО поддерживают узкие фильтры одинаково, поэтому
+ * мы их пробуем как «лучшую попытку», а на стороне роута остатков
+ * после получения ответа всё равно сверяемся точечно по fingerprint
+ * товара. Если РО проигнорирует параметр — мы просто получим первые
+ * 50 товаров склада, и наш fingerprint-матч их отфильтрует.
+ *
+ * Тянем ОДНУ страницу (50 элементов) — больше для точечного поиска
+ * не нужно, иначе 10 страниц × 16 складов = таймаут.
  */
 export async function getStock(
   warehouseId: number,
-  filter: { title?: string; q?: string } = {},
+  filter: {
+    title?: string;
+    q?: string;
+    search?: string;
+    code?: string;
+    barcode?: string;
+    article?: string;
+  } = {},
 ): Promise<RoStockItem[]> {
-  const search = filter.title ?? filter.q;
+  const search = filter.search ?? filter.title ?? filter.q;
   const json = await apiGet<V2List<RoStockItem>>(
     `/warehouse/goods/${warehouseId}`,
-    { page: 1, search },
+    {
+      page: 1,
+      search,
+      code: filter.code,
+      barcode: filter.barcode,
+      article: filter.article,
+    },
   );
   return unwrapList(json).items;
 }
