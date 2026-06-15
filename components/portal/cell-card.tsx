@@ -354,11 +354,18 @@ export function CellCard({ cell, selected, onSelect }: Props) {
                           </span>
                         )}
                       </span>
-                      {roValue && roValue !== value && (
-                        <span className="text-[9px] text-muted-foreground/60">
+                      {roValue ? (
+                        <span
+                          className={cn(
+                            "text-[9px]",
+                            roValue === value
+                              ? "text-muted-foreground/40"
+                              : "text-muted-foreground/60",
+                          )}
+                        >
                           РО: {roValue}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );
