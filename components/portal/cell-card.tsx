@@ -305,13 +305,16 @@ export function CellCard({ cell, selected, onSelect }: Props) {
 
           {/* Диагностика: что у нас в исходнике и что сработало в РО.
               Показываем всегда — чтобы было сразу видно, какие колонки
-              реально заполнены в портале и почему `?search=` нашёл
-              именно этот товар. */}
+              реально заполнены в портале. После запроса остатка — рядом
+              показываем настоящие значения из карточки РО. */}
           <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-background/60 p-1.5">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
               исходник → РО
             </div>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[10px]">
+            <div className={cn(
+              "grid gap-x-3 gap-y-0.5 font-mono text-[10px]",
+              liveStock?.product ? "grid-cols-3" : "grid-cols-2"
+            )}>
               {(
                 [
                   ["ID", partProductId, "productId"],
@@ -322,33 +325,41 @@ export function CellCard({ cell, selected, onSelect }: Props) {
               ).map(([label, value, kind]) => {
                 const tried = liveStock?.tried?.find((t) => t.kind === kind);
                 const isWinner = liveStock?.matchedBy?.kind === kind;
+                const roValue = liveStock?.product ? (liveStock.product[kind as keyof typeof liveStock.product] ?? null) : null;
                 return (
                   <div
                     key={label}
                     className={cn(
-                      "flex items-center justify-between gap-1",
-                      isWinner && "rounded bg-money-muted px-1 text-money",
+                      "flex items-start justify-between gap-1",
+                      isWinner && "rounded bg-money-muted px-1 py-0.5 text-money",
                     )}
                   >
-                    <span className="text-muted-foreground">{label}:</span>
-                    <span
-                      className={cn(
-                        "tabular-nums",
-                        !value && "text-muted-foreground/50",
-                      )}
-                    >
-                      {value ?? "—"}
-                      {tried && (
-                        <span
-                          className={cn(
-                            "ml-1 text-[9px]",
-                            tried.hits > 0 ? "text-money" : "text-rose-600",
-                          )}
-                        >
-                          [{tried.hits}]
+                    <span className="text-muted-foreground flex-shrink-0">{label}:</span>
+                    <div className="flex flex-col gap-0.5 items-end text-right flex-1">
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          !value && "text-muted-foreground/50",
+                        )}
+                      >
+                        {value ?? "—"}
+                        {tried && (
+                          <span
+                            className={cn(
+                              "ml-1 text-[9px]",
+                              tried.hits > 0 ? "text-money" : "text-rose-600",
+                            )}
+                          >
+                            [{tried.hits}]
+                          </span>
+                        )}
+                      </span>
+                      {roValue && roValue !== value && (
+                        <span className="text-[9px] text-muted-foreground/60">
+                          РО: {roValue}
                         </span>
                       )}
-                    </span>
+                    </div>
                   </div>
                 );
               })}
