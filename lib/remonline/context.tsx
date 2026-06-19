@@ -101,6 +101,31 @@ type CtxValue = {
     string,
     { laborConflicts: number; partConflicts: number; total: number }
   >;
+
+  /**
+   * Переопределить значение / url ячейки в памяти сессии.
+   * Используется для inline-редактирования source-ячеек и наценки.
+   * Изменения живут только в памяти — никуда не записываются автоматически.
+   */
+  overrideCell: (address: string, patch: { value?: number | null; url?: string }) => void;
+
+  /**
+   * Читать локальные переопределения ячеек.
+   * source-ячейки и наценка могут иметь исправленное значение.
+   */
+  cellOverrides: Map<string, { value?: number | null; url?: string }>;
+
+  /**
+   * Список дополнительных source-ячеек, добавленных вручную в сессии.
+   * Ключ: stageAddress (например "iphone-17.camr.sources"), значение — массив ячеек.
+   */
+  addedSources: Map<string, Array<{ label: string; url: string; value: number | null }>>;
+
+  /** Добавить новый источник (поставщика) в стейдж источников */
+  addSource: (
+    stageAddress: string,
+    source: { label: string; url: string; value: number | null },
+  ) => void;
 };
 
 const Ctx = createContext<CtxValue | null>(null);
@@ -200,6 +225,43 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     () => new Map(),
   );
   const [loadingStockKey, setLoadingStockKey] = useState<string | null>(null);
+
+  // Локальные переопределения ячеек (value, url) — только в памяти сессии.
+  const [cellOverrides, setCellOverrides] = useState<
+    Map<string, { value?: number | null; url?: string }>
+  >(() => new Map());
+
+  // Вручную добавленные source-ячейки (поставщики).
+  const [addedSources, setAddedSources] = useState<
+    Map<string, Array<{ label: string; url: string; value: number | null }>>
+  >(() => new Map());
+
+  const overrideCell = useCallback(
+    (address: string, patch: { value?: number | null; url?: string }) => {
+      setCellOverrides((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(address) ?? {};
+        next.set(address, { ...existing, ...patch });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addSource = useCallback(
+    (
+      stageAddress: string,
+      source: { label: string; url: string; value: number | null },
+    ) => {
+      setAddedSources((prev) => {
+        const next = new Map(prev);
+        const arr = next.get(stageAddress) ?? [];
+        next.set(stageAddress, [...arr, source]);
+        return next;
+      });
+    },
+    [],
+  );
 
   const requestStock = useCallback<CtxValue["requestStock"]>(
     async (key, bind) => {
@@ -354,6 +416,10 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadingStockKey,
       requestStock,
       conflictByDevice,
+      overrideCell,
+      cellOverrides,
+      addedSources,
+      addSource,
     }),
     [
       services,
@@ -368,6 +434,10 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadingStockKey,
       requestStock,
       conflictByDevice,
+      overrideCell,
+      cellOverrides,
+      addedSources,
+      addSource,
     ],
   );
 

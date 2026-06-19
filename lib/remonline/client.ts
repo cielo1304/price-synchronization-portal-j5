@@ -80,6 +80,48 @@ async function apiGet<T>(
   }
 }
 
+/**
+ * Универсальный PATCH/PUT с Bearer-авторизацией.
+ * Remonline использует PUT для обновления ресурсов (не PATCH).
+ */
+async function apiPut<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${getApiToken()}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `Remonline PUT ${path} вернул HTTP ${res.status}: ${text.slice(0, 300)}`,
+      );
+    }
+    return (await res.json()) as T;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(
+        `Remonline PUT ${path}: таймаут ${REQUEST_TIMEOUT_MS / 1000} сек.`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Доменные типы (минимум полей, что нужны порталу) ───────────────────
 
 export type RoWarehouse = {
@@ -266,7 +308,7 @@ export async function getProductById(
  *
  * Документация (v1.4): https://roapp.readme.io/v1.4/reference/get-stock
  *
- * Точные фильтры — это массивы:
+ * Точные фильтры — это ��ассивы:
  *   • ids[]={product_id}     — внутренний product_id товара в РО.
  *   • articles[]={article}   — артикул (SKU).
  *   • barcodes[]={barcode}   — штрихкод.
@@ -305,4 +347,37 @@ export async function getStock(
     arrays,
   );
   return unwrapList(json).items;
+}
+
+// ── Запись цен ─────────────────────────────────────────────────────────
+
+/**
+ * Обновить закупочную и/или розничную цену товара в РО.
+ * PUT /products/{id}
+ *
+ * Документация: https://roapp.readme.io/reference/updateproduct
+ * РО требует передавать id товара и хотя бы одно поле для обновления.
+ *
+ * cost   = закупочная цена
+ * price  = розничная цена
+ */
+export async function updateProductPrice(
+  productId: number | string,
+  patch: { cost?: number; price?: number },
+): Promise<RoProduct> {
+  return apiPut<RoProduct>(`/products/${productId}`, patch);
+}
+
+/**
+ * Обновить стоимость услуги в РО.
+ * PUT /services/{id}
+ *
+ * Документация: https://roapp.readme.io/reference/updateservice
+ * price = стандартная стоимость услуги.
+ */
+export async function updateServicePrice(
+  serviceId: number | string,
+  patch: { price?: number; duration?: number },
+): Promise<RoService> {
+  return apiPut<RoService>(`/services/${serviceId}`, patch);
 }
