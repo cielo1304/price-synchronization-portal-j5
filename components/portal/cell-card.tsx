@@ -100,19 +100,6 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
   const roResolved = ro.state === "resolved";
   const roValue = roResolved ? ro.remoteValue : null;
 
-  // Прямая ссылка на карточку в веб-интерфейсе РО.
-  //  • услуги  → /company/services-pricelist/{id}
-  //  • товары  → /warehouse/residue/{id}
-  const roKind = cell.roMatch?.kind;
-  const roDeepLink =
-    ro.state === "resolved"
-      ? roKind === "service-price" || roKind === "service-duration"
-        ? `https://web.roapp.io/company/services-pricelist/${ro.roId}`
-        : roKind === "part-purchase" || roKind === "part-retail"
-          ? `https://web.roapp.io/warehouse/residue/${ro.roId}`
-          : null
-      : null;
-
   // Что показываем как основное значение ячейки:
   //  1) правка пользователя (если редактировал) →
   //  2) живое значение из РО (если snapshot загружен) →
@@ -237,6 +224,30 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
   const hasAnyPartId = !!(partArticle || partProductId || partCode || partBarcode);
   const liveStock = stockKey ? stockByKey.get(stockKey) : undefined;
   const stockLoading = stockKey !== null && loadingStockKey === stockKey;
+
+  // Прямая ссылка на карточку в веб-интерфейсе РО.
+  //  • услуги  → /company/services-pricelist/{id}
+  //  • товары  → /warehouse/residue/{id}
+  // Для услуг id берём из резолва прайса (ro.roId).
+  // Для запчастей id может быть известен, даже если прайс не сматчился по
+  // имени: берём его из карточки живого остатка (liveStock.product.id),
+  // затем из partProductId привязки, и лишь потом из резолва прайса.
+  const isServiceCell =
+    cell.roMatch?.kind === "service-price" ||
+    cell.roMatch?.kind === "service-duration";
+  const serviceRoId = roResolved && isServiceCell ? ro.roId : null;
+  const partRoId = isPartCell
+    ? (liveStock?.product?.id ??
+      (partProductId ? Number(partProductId) : null) ??
+      (roResolved ? ro.roId : null))
+    : null;
+  const roDeepLink = isServiceCell
+    ? serviceRoId != null
+      ? `https://web.roapp.io/company/services-pricelist/${serviceRoId}`
+      : null
+    : isPartCell && partRoId != null
+      ? `https://web.roapp.io/warehouse/residue/${partRoId}`
+      : null;
 
   const handleRequestStock = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -440,19 +451,6 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
             </span>
           </div>
 
-          {roDeepLink && (
-            <a
-              href={roDeepLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-money/30 bg-card px-3 py-1.5 text-[11px] font-medium text-money transition hover:bg-money-muted"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Открыть в РО
-            </a>
-          )}
-
           {isMismatch && (
             <>
               <div className="mt-1 flex items-center gap-2 rounded-md bg-rose-100 px-2 py-1.5">
@@ -650,6 +648,21 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
           <div className="mt-0.5 truncate font-mono text-[9px] text-amber-700/70">
             ключ: {ro.expectedKey.slice(0, 50)}…
           </div>
+        </div>
+      )}
+
+      {roDeepLink && (
+        <div className="border-t border-border/60 px-3 py-2">
+          <a
+            href={roDeepLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-money/30 bg-card px-3 py-1.5 text-[11px] font-medium text-money transition hover:bg-money-muted"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Открыть в РО
+          </a>
         </div>
       )}
 
