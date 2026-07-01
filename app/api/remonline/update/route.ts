@@ -73,22 +73,31 @@ export async function PATCH(req: Request) {
     if (kind === "service-price") {
       let match: { id: number | string; title?: string } | null = null;
 
-      // 1. Точный поиск по штрихкоду через q= (РО ищет по title/code/barcode).
-      //    Это надёжнее чем нормализация имени — штрихкод уникален.
+      // 1. Точный поиск по штрихкоду через q=
+      //    Штрихкод в РО может быть числом (int32) или строкой — приводим к строке.
       if (serviceBarcode) {
-        const results = await findServiceByQuery(serviceBarcode);
-        // q= может вернуть несколько — берём точное совпадение по штрихкоду
-        match = results.find((s) =>
-          (s.barcodes ?? []).some(
-            (b: string) => b.trim().toLowerCase() === serviceBarcode.trim().toLowerCase()
-          )
-        ) ?? results[0] ?? null;
+        const needle = String(serviceBarcode).trim().toLowerCase();
+        console.log("[v0] findServiceByQuery needle:", needle);
+        const results = await findServiceByQuery(needle);
+        console.log("[v0] findServiceByQuery results count:", results.length, results.map(r => ({ id: r.id, title: r.title, barcodes: r.barcodes })));
+        match =
+          results.find((s) =>
+            (s.barcodes ?? []).some(
+              (b) => String(b).trim().toLowerCase() === needle,
+            ),
+          ) ??
+          results[0] ??
+          null;
       }
 
       // 2. Фоллбек: полный перебор по нормализованному имени
       if (!match) {
+        console.log("[v0] serviceBarcode не дал результата, пробуем по имени. key:", key);
         const services = await fetchAllServices();
-        match = services.find((s) => normalizeName(s.title ?? "") === key) ?? null;
+        match =
+          services.find((s) => normalizeName(String(s.title ?? "")) === key) ??
+          null;
+        console.log("[v0] fetchAllServices fallback match:", match ? { id: match.id, title: match.title } : null);
       }
 
       if (!match) {

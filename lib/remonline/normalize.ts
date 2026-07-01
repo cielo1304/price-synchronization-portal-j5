@@ -13,10 +13,12 @@
  *     → "iphone 16 dis дисплеи снятыи оригинал бу"
  */
 export function normalizeName(s: string): string {
-  return s
+  // Защита: если пришло не-строковое значение из РО — приводим к строке.
+  const safe = typeof s === "string" ? s : String(s ?? "");
+  return safe
     .toLowerCase()
-    .replace(/[ё]/g, "е")
-    .replace(/[й]/g, "и")
+    .replace(/ё/g, "е")
+    .replace(/й/g, "и")
     .replace(/[\[\]()]/g, " ")
     .replace(/[^a-zа-я0-9]+/gi, " ")
     .trim()
