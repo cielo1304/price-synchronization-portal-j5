@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   updateProductPrice,
   updateServicePrice,
+  findServiceByQuery,
   getStock,
   listWarehouses,
   getProductById,
@@ -45,6 +46,7 @@ export async function PATCH(req: Request) {
       partProductId,
       partCode,
       partBarcode,
+      serviceBarcode,
     } = body as {
       kind: "part-purchase" | "part-retail" | "service-price";
       key: string;
@@ -53,6 +55,11 @@ export async function PATCH(req: Request) {
       partCode?: string | null;
       partArticle?: string | null;
       partBarcode?: string | null;
+      /**
+       * Штрихкод услуги в РО (например "i17-CAMR").
+       * Используется для точного поиска через GET /services/?q=
+       */
+      serviceBarcode?: string | null;
     };
 
     if (!kind || !key || value === undefined || value === null) {
@@ -64,18 +71,41 @@ export async function PATCH(req: Request) {
 
     // ── Услуга ──────────────────────────────────────────────────────────
     if (kind === "service-price") {
-      const services = await fetchAllServices();
-      const match = services.find((s) => normalizeName(s.title ?? "") === key);
+      let match: { id: number | string; title?: string } | null = null;
+
+      // 1. Точный поиск по штрихкоду через q= (РО ищет по title/code/barcode).
+      //    Это надёжнее чем нормализация имени — штрихкод уникален.
+      if (serviceBarcode) {
+        const results = await findServiceByQuery(serviceBarcode);
+        // q= может вернуть несколько — берём точное совпадение по штрихкоду
+        match = results.find((s) =>
+          (s.barcodes ?? []).some(
+            (b: string) => b.trim().toLowerCase() === serviceBarcode.trim().toLowerCase()
+          )
+        ) ?? results[0] ?? null;
+      }
+
+      // 2. Фоллбек: полный перебор по нормализованному имени
+      if (!match) {
+        const services = await fetchAllServices();
+        match = services.find((s) => normalizeName(s.title ?? "") === key) ?? null;
+      }
+
       if (!match) {
         return NextResponse.json(
-          { ok: false, error: `Услуга с ключом «${key}» не найдена в Remonline` },
+          {
+            ok: false,
+            error: `Услуга не найдена в Remonline. Ключ: «${key}», штрихкод: «${serviceBarcode ?? "—"}»`,
+          },
           { status: 404 },
         );
       }
-      await updateServicePrice(match.id, { price: value });
+
+      // Поле в PUT /services/{id} называется "cost" (проверено по доке v1.4)
+      await updateServicePrice(match.id, { cost: value });
       return NextResponse.json({
         ok: true,
-        updated: { id: match.id, title: match.title, newPrice: value },
+        updated: { id: match.id, title: match.title, newCost: value },
       });
     }
 

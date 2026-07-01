@@ -134,8 +134,11 @@ export type RoService = {
   id: number;
   title: string;
   price?: number | null;
+  cost?: number | null;
   duration?: number | null;
   code?: string | null;
+  /** Штрихкоды услуги — РО возвращает массив строк */
+  barcodes?: string[] | null;
 };
 
 export type RoProduct = {
@@ -370,14 +373,26 @@ export async function updateProductPrice(
 
 /**
  * Обновить стоимость услуги в РО.
- * PUT /services/{id}
+ * PUT /services/{service_id}
  *
- * Документация: https://roapp.readme.io/reference/updateservice
- * price = стандартная стоимость услуги.
+ * Документация: https://roapp.readme.io/v1.4/reference/update-service
+ * Поле: cost = стандартная стоимость услуги (не "price" — проверено по доке).
  */
 export async function updateServicePrice(
   serviceId: number | string,
-  patch: { price?: number; duration?: number },
+  patch: { cost?: number; duration?: number },
 ): Promise<RoService> {
   return apiPut<RoService>(`/services/${serviceId}`, patch);
+}
+
+/**
+ * Поиск услуги по штрихкоду или тексту. GET /services/?q=
+ *
+ * Документация: https://roapp.readme.io/v1.4/reference/get-service
+ * Параметры: q — поиск по тексту в title/code/barcode (строка).
+ * barcodes[] в доке описан как int32 — не подходит для строковых штрихкодов.
+ */
+export async function findServiceByQuery(q: string): Promise<RoService[]> {
+  const json = await apiGet<V2List<RoService>>("/services/", { q });
+  return unwrapList(json).items;
 }

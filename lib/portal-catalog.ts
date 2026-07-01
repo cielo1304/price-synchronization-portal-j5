@@ -37,6 +37,8 @@ type RawSource = {
   labor: {
     sheetRef: string;
     name: string;
+    /** Штрихкод услуги в РО (например "i17-CAMR") — из колонки в таблице */
+    barcode?: string | null;
     price: number | null;
     duration: string | null;
     warranty: number | null;
@@ -457,7 +459,11 @@ function recordToPosition(rec: RawSource): Position {
           ? `Источник истины: ${rec.labor.sheetRef}`
           : undefined,
         roMatch: laborRoKey
-          ? { kind: "service-price", key: laborRoKey }
+          ? {
+              kind: "service-price" as const,
+              key: laborRoKey,
+              serviceBarcode: rec.labor?.barcode ?? null,
+            }
           : undefined,
       },
     ],
@@ -633,7 +639,7 @@ export type PricingFingerprint = {
   /**
    * Идентификаторы запчасти для запроса остатка через РО.
    * Все поля очищены от пробелов; null если в исходной таблице пусто.
-   * Серверу `/api/remonline/stock` достаточно ��юбого одного, чтобы
+   * Серверу `/api/remonline/stock` достаточно ����юбого одного, чтобы
    * найти товар точным фильтром (`ids[]` / `articles[]` / `barcodes[]`).
    */
   partProductId: string | null;

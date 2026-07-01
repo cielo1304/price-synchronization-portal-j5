@@ -72,6 +72,12 @@ export type Cell = {
     partCode?: string | null;
     partArticle?: string | null;
     partBarcode?: string | null;
+    /**
+     * Штрихкод услуги в РО (например "i17-CAMR").
+     * Используется для точного поиска через GET /services/?q=
+     * Заполняется только для service-price; для part-* всегда null.
+     */
+    serviceBarcode?: string | null;
   };
 };
 

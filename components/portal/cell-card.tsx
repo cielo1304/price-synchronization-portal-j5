@@ -152,6 +152,7 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
           partCode: cell.roMatch.partCode ?? null,
           partArticle: cell.roMatch.partArticle ?? null,
           partBarcode: cell.roMatch.partBarcode ?? null,
+          serviceBarcode: cell.roMatch.serviceBarcode ?? null,
         }),
       });
       const json = await res.json();
