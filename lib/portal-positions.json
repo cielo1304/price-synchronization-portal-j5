@@ -1982,7 +1982,7 @@
     "warrantyDays": 90,
     "finalPrice": 800,
     "range": null,
-    "formula": "'БД_УСЛУГИ_РО'!P61",
+    "formula": "'БД_У������ЛУГИ_РО'!P61",
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F129",
     "priceListRangeRef": null,
     "labor": {
@@ -2244,7 +2244,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P591",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q591",
-      "name": "iPhone SE 2016 [CHG] Шлейф зарядки (нижний, док) Черный",
+      "name": "iPhone SE 2016 [CHG] Шлейф ��ар��дк�� (нижний, док) Черный",
       "partId": "5458 623",
       "model": "iPhone SE 2016",
       "category": "Шлейф зарядки",
@@ -2425,7 +2425,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 6",
-    "service": "Аккумулятор - замена на АНАЛОГ",
+    "service": "Аккумулятор - зам��на на АНАЛОГ",
     "warrantyDays": 180,
     "finalPrice": 1400,
     "range": null,
@@ -2701,7 +2701,7 @@
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F155",
     "priceListRangeRef": null,
     "labor": {
-      "sheetRef": "БД_УСЛУГИ_РО!P84",
+      "sheetRef": "БД_УСЛУГИ_��О!P84",
       "name": "[i6-CGL] iPhone 6 Камера - замена разбитого стекла | *цена за 1шт.",
       "price": 800,
       "duration": null,
@@ -2890,7 +2890,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P593",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q593",
-      "name": "iPhone 6 [CHG] Шлейф зарядки (нижний, док) Черный",
+      "name": "iPhone 6 [CHG] Шлей�� зарядки (нижний, док) Черный",
       "partId": "162 034",
       "model": "iPhone 6",
       "category": "Шлейф зарядки",
@@ -3150,7 +3150,7 @@
     "finalPrice": 2850,
     "range": "2500 - 2850",
     "formula": "'БД_УСЛУГИ_РО'!P100+'БД_ЗАПЧАСТИ'!P158",
-    "priceListSheetRef": "ПРАЙС_ЛИСТ!F172",
+    "priceListSheetRef": "ПРАЙС_Л��СТ!F172",
     "priceListRangeRef": "ПРАЙС_ЛИСТ!G172",
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P100",
@@ -4963,7 +4963,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 6S Plus",
-    "service": "WiFi / Bluetooth - восстановление беспроводных сетей | *цена от, требуется диагностика",
+    "service": "WiFi / Bluetooth - восстановление беспро��одны�� сетей | *цена от, требуется диагностика",
     "warrantyDays": 90,
     "finalPrice": 1000,
     "range": null,
@@ -5429,7 +5429,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 7",
-    "service": "Кнопки - восстановление / замена | *цена от, требуется диагностика",
+    "service": "Кнопки - восстановление / замена | *цена от, требуется д��агност��ка",
     "warrantyDays": 90,
     "finalPrice": 1200,
     "range": null,
@@ -6436,7 +6436,7 @@
       "name": "iPhone 8 [BAT] Аккумулятор - Аналог ORIG",
       "partId": "9340 394",
       "model": "iPhone 8",
-      "category": "Аккумулятор",
+      "category": "Аккумул��тор",
       "purchaseICmp": 590,
       "purchaseMOS": 550,
       "purchase": 590,
@@ -6901,7 +6901,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 8",
-    "service": "Микрофон - замена (один из..) | *требуется диагностика",
+    "service": "Микрофон - замена (один из..) | *требуется диа��ностика",
     "warrantyDays": 90,
     "finalPrice": 3100,
     "range": null,
@@ -7676,7 +7676,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P246",
-      "name": "[i8PL-LIQ] iPhone 8 Plus Профилактика после воды - восстановление | *требуется диагностика",
+      "name": "[i8PL-LIQ] iPhone 8 Plus Профилактика после воды - восстановлен��е | *требуется диагностика",
       "price": 2500,
       "duration": null,
       "warranty": 90
@@ -7976,7 +7976,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone SE 2020",
-    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ОРИГИНАЛ",
+    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ОРИГИНА��",
     "warrantyDays": 90,
     "finalPrice": 3000,
     "range": null,
@@ -8207,7 +8207,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone SE 2020",
-    "service": "Корпус - замена",
+    "service": "Ко��пус - замена",
     "warrantyDays": 180,
     "finalPrice": 1500,
     "range": null,
@@ -9019,7 +9019,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone SE 2022",
-    "service": "Динамик полифонический (нижний, громкая связь) - замена",
+    "service": "Динамик по��ифонический (нижн��й, гром��ая связь) - замена",
     "warrantyDays": 90,
     "finalPrice": 1850,
     "range": null,
@@ -9093,7 +9093,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone SE 2022",
-    "service": "Микрофон - замена (один из..) | *требуется диагностика",
+    "service": "Микрофон - замена (один из..) | *требуетс�� диагностика",
     "warrantyDays": 90,
     "finalPrice": 1900,
     "range": null,
@@ -9539,7 +9539,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P764",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q764",
-      "name": "iPhone XR [CAMR] Основная камера",
+      "name": "iPhone XR [CAMR] Основная кам��ра",
       "partId": "11965 500",
       "model": "iPhone XR",
       "category": "Основная камера",
@@ -9905,7 +9905,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P343",
-      "name": "[iXR-MDM] iPhone XR Модем - восстановление GSM сети | *требуется диагностика",
+      "name": "[iXR-MDM] iPhone XR Модем - восста��овление GSM сети | *требуется диаг��остика",
       "price": 2200,
       "duration": null,
       "warranty": 90
@@ -9947,7 +9947,7 @@
     "finalPrice": 1,
     "range": null,
     "formula": "'БД_УСЛУГИ_РО'!P297",
-    "priceListSheetRef": "ПРАЙС_ЛИСТ!F413",
+    "priceListSheetRef": "��РАЙС_ЛИСТ!F413",
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P297",
@@ -10809,7 +10809,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P350",
-      "name": "[iXS-BAT] iPhone XS Аккумулятор - замена",
+      "name": "[iXS-BAT] iPhone XS Аккум��лятор - замена",
       "price": 1800,
       "duration": null,
       "warranty": 180
@@ -11091,7 +11091,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone XS",
-    "service": "Камера - замена разбитого стекла | *цена за 1шт.",
+    "service": "Камера - замена разби��ого стекла | *цена за 1шт.",
     "warrantyDays": 180,
     "finalPrice": 2000,
     "range": null,
@@ -11714,7 +11714,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone XS Max",
-    "service": "Дисплей - замена на АНАЛОГ",
+    "service": "Дисплей - замена на АН��ЛОГ",
     "warrantyDays": 90,
     "finalPrice": 1800,
     "range": null,
@@ -12157,7 +12157,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone XS Max",
-    "service": "Модем - восстановление GSM сети | *цена от, требуется диагностика",
+    "service": "Модем - восстановление GSM сети | *цена от, требуется д��агностика",
     "warrantyDays": 90,
     "finalPrice": 7700,
     "range": null,
@@ -12618,7 +12618,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P410",
-      "name": "[i11-CAMF] iPhone 11 Камера фронтальная - замена",
+      "name": "[i11-CAMF] iPhone 11 Кам��ра фронтальная - замена",
       "price": 3400,
       "duration": null,
       "warranty": 90
@@ -13278,7 +13278,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P432",
-      "name": "[i11P-DIS] iPhone 11 Pro Дисплей - замена",
+      "name": "[i11P-DIS] iPhone 11 Pro Дисплей - замен��",
       "price": 2600,
       "duration": null,
       "warranty": 90
@@ -13499,7 +13499,7 @@
     "warrantyDays": 180,
     "finalPrice": 6000,
     "range": null,
-    "formula": "'БД_УСЛУГИ_РО'!P440+'БД_ЗАПЧАСТИ'!P354",
+    "formula": "'БД_УСЛУ��И_РО'!P440+'БД_ЗАПЧАСТИ'!P354",
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F538",
     "priceListRangeRef": null,
     "labor": {
@@ -14375,8 +14375,8 @@
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F569",
     "priceListRangeRef": null,
     "labor": {
-      "sheetRef": "БД_УСЛУГИ_РО!P470",
-      "name": "[i11PM-SPK] iPhone 11 Pro Max Динамик полифонический (нижний, громкая связь) - замена",
+      "sheetRef": "БД_УСЛУ��И_РО!P470",
+      "name": "[i11PM-SPK] iPhone 11 Pro Max Динамик пол��фонический (нижний, громкая связь) - замена",
       "price": 3000,
       "duration": null,
       "warranty": 90
@@ -15237,7 +15237,7 @@
     },
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P769",
-      "sheetRefRetail": "БД_ЗАПЧАСТИ!Q769",
+      "sheetRefRetail": "БД_ЗА��ЧАСТИ!Q769",
       "name": "iPhone 12 [CAMR] Основная камера",
       "partId": "30469 832",
       "model": "iPhone 12",
@@ -16086,7 +16086,7 @@
       "name": "iPhone 12 Mini [DIS] Дисплей - Восстановленный оригинал (бу)",
       "partId": null,
       "model": "iPhone 12 Mini",
-      "category": "Дисплей",
+      "category": "Ди��плей",
       "purchaseICmp": null,
       "purchaseMOS": null,
       "purchase": null,
@@ -16163,7 +16163,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 12 Mini",
-    "service": "Дисплей - замена на АНАЛОГ (неизвестная деталь)",
+    "service": "Дисплей - замена на АНАЛОГ (не��звестная деталь)",
     "warrantyDays": 90,
     "finalPrice": 3100,
     "range": null,
@@ -16606,7 +16606,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 12 Mini",
-    "service": "Профилактика после воды - восстановление | *цена от, требуется диагностика",
+    "service": "Профилактика после воды - восстановление | *цена от, требуется ди��гностика",
     "warrantyDays": 90,
     "finalPrice": 4500,
     "range": null,
@@ -16753,7 +16753,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P536",
-      "name": "[i12P-CLN] iPhone 12 Pro Чистка сеток динамиков и разъема зарядки С РАЗБОРОМ",
+      "name": "[i12P-CLN] iPhone 12 Pro Чистка сеток динамиков и разъема зарядки С РАЗБОРО��",
       "price": 3300,
       "duration": null,
       "warranty": 0
@@ -17654,7 +17654,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 12 Pro",
-    "service": "Ремонт платы - восстановление / замена | *цена от, требуется диагностика",
+    "service": "Ремонт платы - восс��ановление / замена | *цена от, требуется диагностик��",
     "warrantyDays": 90,
     "finalPrice": 3800,
     "range": null,
@@ -18725,7 +18725,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 12 Pro Max",
-    "service": "Ремонт платы - восстановление / замена | *цена от, требуется диагностика",
+    "service": "Ремонт платы - восстановление / замена | *це��а от, требуется диагностика",
     "warrantyDays": 90,
     "finalPrice": 3800,
     "range": null,
@@ -19168,7 +19168,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13",
-    "service": "Дисплей - замена на СЕРВИСНЫЙ ОРИГИНАЛ",
+    "service": "Дисплей - замена на СЕРВИСНЫЙ ОРИГИН��Л",
     "warrantyDays": 90,
     "finalPrice": 4000,
     "range": "10700 - 12000",
@@ -19279,7 +19279,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13",
-    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ОРИГИНАЛ (бу)",
+    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ��РИГИНАЛ (бу)",
     "warrantyDays": 90,
     "finalPrice": 11200,
     "range": null,
@@ -19819,7 +19819,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13",
-    "service": "Профилактика после воды - восстановление | *цена от, требуется диагностика",
+    "service": "П��офилактика после воды - восстановление | *цена от, требуется диагностика",
     "warrantyDays": 90,
     "finalPrice": 5500,
     "range": null,
@@ -20174,7 +20174,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P620",
-      "name": "[i13MN-CHG] iPhone 13 mini Разъем зарядки - замена",
+      "name": "[i13MN-CHG] iPhone 13 mini Разъем зарядки - заме��а",
       "price": 4000,
       "duration": null,
       "warranty": 90
@@ -20256,7 +20256,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P221",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q221",
-      "name": "iPhone 13 Mini [DIS] Дисплей - Снятый оригинал (бу)",
+      "name": "iPhone 13 Mini [DIS] Дисплей - Сня��ый оригинал (бу)",
       "partId": "56277 613",
       "model": "iPhone 13 Mini",
       "category": "Дисплей",
@@ -20488,7 +20488,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P624",
-      "name": "[i13MN-DGT] iPhone 13 mini Дисплей - замена (переклей) разбитого стекла с тачскрином",
+      "name": "[i13MN-DGT] iPhone 13 mini Дисплей - замена (перекле��) разбитого стекла с тачскрином",
       "price": 1,
       "duration": null,
       "warranty": 90
@@ -20636,7 +20636,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13 Mini",
-    "service": "Крышка (заднее стекло) - замена на АНАЛОГ",
+    "service": "Крышка (заднее стекл��) - замена на АНАЛОГ",
     "warrantyDays": 180,
     "finalPrice": 6450,
     "range": null,
@@ -21067,7 +21067,7 @@
     },
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P60",
-      "sheetRefRetail": "БД_ЗАПЧАСТИ!Q60",
+      "sheetRefRetail": "БД_ЗАПЧАСТ��!Q60",
       "name": "iPhone 13 Pro [BAT] Аккумулятор - Снятый оригинал (бу)",
       "partId": "50305 981",
       "model": "iPhone 13 Pro",
@@ -21527,7 +21527,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13 Pro",
-    "service": "Дисплей - замена разбитого стекла",
+    "service": "Дисплей - замена раз��итого стекла",
     "warrantyDays": 90,
     "finalPrice": 10000,
     "range": "1 - 10000",
@@ -21610,7 +21610,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13 Pro",
-    "service": "Камера фронтальная - замена",
+    "service": "Камера фро��тальная - замена",
     "warrantyDays": 90,
     "finalPrice": 7900,
     "range": null,
@@ -21827,7 +21827,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13 Pro",
-    "service": "Динамик разговорный (верхний, слуховой) - замена",
+    "service": "Динамик разговорный (верхний, слуховой) - за��ена",
     "warrantyDays": 90,
     "finalPrice": 5350,
     "range": null,
@@ -22233,7 +22233,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 13 Pro Max",
-    "service": "Аккумулятор - замена на АНАЛОГ (неизвестная деталь)",
+    "service": "Аккуму��ятор - замена на АНАЛОГ (неизвестная деталь)",
     "warrantyDays": 180,
     "finalPrice": 6000,
     "range": null,
@@ -22760,7 +22760,7 @@
     "finalPrice": 6700,
     "range": null,
     "formula": "'БД_УСЛУГИ_РО'!P682",
-    "priceListSheetRef": "ПРАЙС_ЛИСТ!F851",
+    "priceListSheetRef": "��РАЙС_ЛИСТ!F851",
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P682",
@@ -23341,7 +23341,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 14",
-    "service": "Аккумулятор - замена с устранением уведомления | *цена под ключ",
+    "service": "Аккумулятор - замена с уст��анением уведомления | *цена под ключ",
     "warrantyDays": 180,
     "finalPrice": 10700,
     "range": null,
@@ -23567,7 +23567,7 @@
     "warrantyDays": 90,
     "finalPrice": 13000,
     "range": null,
-    "formula": "'БД_УСЛУГИ_РО'!P702+'БД_ЗАПЧАСТИ'!P239",
+    "formula": "'БД_УСЛУГИ_РО'!P702+'БД_ЗА��ЧАСТИ'!P239",
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F878",
     "priceListRangeRef": null,
     "labor": {
@@ -23766,7 +23766,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 14",
-    "service": "Камера - замена разбитого стекла | *цена за 1шт.",
+    "service": "Камера - ��амена разбитого стекла | *цена за 1шт.",
     "warrantyDays": 180,
     "finalPrice": 3900,
     "range": null,
@@ -24059,7 +24059,7 @@
     },
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P678",
-      "sheetRefRetail": "БД_ЗАПЧАСТИ!Q678",
+      "sheetRefRetail": "БД_ЗАП��АСТИ!Q678",
       "name": "iPhone 14 [CHG] Шлейф зарядки (нижний, док) Черный",
       "partId": "36262 982",
       "model": "iPhone 14",
@@ -24429,7 +24429,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P81",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q81",
-      "name": "iPhone 14 Plus [BAT] Аккумулятор - Аналог ORIG (неизвестная деталь)",
+      "name": "iPhone 14 Plus [BAT] Аккумулятор - Аналог ORIG (неизв��стная деталь)",
       "partId": "41141 217",
       "model": "iPhone 14 Plus",
       "category": "Аккумулятор",
@@ -24501,7 +24501,7 @@
       "warranty": 90
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P684",
+      "sheetRef": "БД_ЗАПЧАСТ��!P684",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q684",
       "name": "iPhone 14 Plus [CHG] Шлейф зарядки (нижний, док) Черный",
       "partId": null,
@@ -24650,7 +24650,7 @@
     },
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P243",
-      "sheetRefRetail": "БД_ЗАПЧАСТИ!Q243",
+      "sheetRefRetail": "БД_ЗА��ЧАСТИ!Q243",
       "name": "iPhone 14 Plus [DIS] Дисплей - Восстановленный оригинал (бу)",
       "partId": null,
       "model": "iPhone 14 Plus",
@@ -24889,7 +24889,7 @@
       "warranty": 180
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P561",
+      "sheetRef": "БД_ЗАПЧАСТ��!P561",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q561",
       "name": "iPhone 14 / 14 Plus [CGL] Стекло камеры - нижнее",
       "partId": "34399 600",
@@ -25114,7 +25114,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 14 Plus",
-    "service": "Динамик разговорный (верхний, слуховой) - замена",
+    "service": "Дина��ик разговорный (верхний, слуховой) - замена",
     "warrantyDays": 90,
     "finalPrice": 5650,
     "range": null,
@@ -25326,7 +25326,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 14 Pro",
-    "service": "Чистка сеток динамиков и разъема зарядки БЕЗ РАЗБОРА",
+    "service": "Чистка сеток дина��иков и разъема зарядки БЕЗ РАЗБОРА",
     "warrantyDays": 0,
     "finalPrice": 700,
     "range": "700 - 5000",
@@ -26429,13 +26429,13 @@
     "priceListRangeRef": "ПРАЙС_ЛИСТ!G976",
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P779",
-      "name": "[i14PM-BAT] iPhone 14 Pro Max Аккумулятор - замена",
+      "name": "[i14PM-BAT] iPhone 14 Pro Max Аккумул��тор - замена",
       "price": 5100,
       "duration": null,
       "warranty": 180
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P89",
+      "sheetRef": "БД_ЗАПЧАС��И!P89",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q89",
       "name": "iPhone 14 Pro Max [BAT] Аккумулятор - Сервисный оригинал (подлинное)",
       "partId": "56236 006",
@@ -26843,8 +26843,8 @@
     },
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P254",
-      "sheetRefRetail": "БД_ЗАПЧАСТИ!Q254",
-      "name": "iPhone 14 Pro Max [DIS] Дисплей - Восстановленный оригинал (неизвестная деталь)",
+      "sheetRefRetail": "БД_З��ПЧАСТИ!Q254",
+      "name": "iPhone 14 Pro Max [DIS] Дисплей - ��осстановленный оригинал (неизвестная деталь)",
       "partId": "38173 698",
       "model": "iPhone 14 Pro Max",
       "category": "Дисплей",
@@ -27293,7 +27293,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P795",
-      "name": "[i14PM-BRD] iPhone 14 Pro Max Ремонт платы - восстановление / замена | *требуется диагностика",
+      "name": "[i14PM-BRD] iPhone 14 Pro Max Ремонт платы - восстановление / з��мена | *требуется диагностика",
       "price": 5500,
       "duration": null,
       "warranty": 90
@@ -27316,7 +27316,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P797",
-      "name": "[i14PM-LIQ] iPhone 14 Pro Max Профилактика после воды - восстановление | *требуется диагностика",
+      "name": "[i14PM-LIQ] iPhone 14 Pro Max Профилактика после воды - восстановление | *требуетс�� диагностика",
       "price": 6500,
       "duration": null,
       "warranty": 90
@@ -27509,11 +27509,11 @@
     "warrantyDays": 180,
     "finalPrice": 11000,
     "range": null,
-    "formula": "'БД_УСЛУГИ_РО'!P805+'БД_ЗАПЧАСТИ'!P96",
-    "priceListSheetRef": "ПРАЙС_ЛИСТ!F1012",
+    "formula": "'БД_УС��УГИ_РО'!P805+'БД_ЗАПЧАСТИ'!P96",
+    "priceListSheetRef": "ПРА��С_ЛИСТ!F1012",
     "priceListRangeRef": null,
     "labor": {
-      "sheetRef": "БД_УСЛУГИ_РО!P805",
+      "sheetRef": "БД_��СЛУГИ_РО!P805",
       "name": "[i15-BAT] iPhone 15 Аккумулятор - замена",
       "price": 5800,
       "duration": null,
@@ -28593,7 +28593,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P101",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q101",
-      "name": "iPhone 15 Plus [BAT] Аккумулятор - Сервисный оригинал (подлинное)",
+      "name": "iPhone 15 Plus [BAT] Аккумулятор - Сервисный о��игинал (подлинное)",
       "partId": "56243 750",
       "model": "iPhone 15 Plus",
       "category": "Аккумулятор",
@@ -28665,7 +28665,7 @@
       "warranty": 180
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P103",
+      "sheetRef": "БД_З��ПЧАСТИ!P103",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q103",
       "name": "iPhone 15 Plus [BAT] Аккумулятор - Аналог ORIG (подлинное)",
       "partId": null,
@@ -29500,7 +29500,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 15 Plus",
-    "service": "Ремонт платы - восстановление / замена | *цена от, требуется диагностика",
+    "service": "Ремонт платы - восстан��вление / замена | *цена от, требуется диагностика",
     "warrantyDays": 90,
     "finalPrice": 6500,
     "range": null,
@@ -30460,7 +30460,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P871",
-      "name": "[i15P-MID] iPhone 15 Pro Корпус (средняя часть) - замена",
+      "name": "[i15P-MID] iPhone 15 Pro Корпус (сре��няя часть) - замена",
       "price": 6300,
       "duration": null,
       "warranty": 180
@@ -31343,7 +31343,7 @@
       "warranty": 90
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P782",
+      "sheetRef": "БД_ЗАПЧАС��И!P782",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q782",
       "name": "iPhone 15 Pro Max [CAMR] Основная камера",
       "partId": "38891 540",
@@ -31462,7 +31462,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 15 Pro Max",
-    "service": "Крышка (заднее стекло) - замена на СНЯТЫЙ ОРИГИНАЛ",
+    "service": "Крышка (заднее стекл��) - замена на СНЯТЫЙ ОРИГИНАЛ",
     "warrantyDays": 180,
     "finalPrice": 14000,
     "range": "8000 - 14000",
@@ -31642,7 +31642,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 15 Pro Max",
-    "service": "Динамик разговорный (верхний, слуховой) - замена",
+    "service": "Динамик разговорный (верхний, слу��овой) - замена",
     "warrantyDays": 90,
     "finalPrice": 7350,
     "range": null,
@@ -32542,7 +32542,7 @@
     "priceListRangeRef": "ПРАЙС_ЛИСТ!G1179",
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P923",
-      "name": "[i16-BGL] iPhone 16 Крышка (заднее стекло) - замена",
+      "name": "[i16-BGL] iPhone 16 ��рышка (заднее стекло) - замена",
       "price": 4900,
       "duration": null,
       "warranty": 180
@@ -32685,7 +32685,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P927",
-      "name": "[i16-SPK] iPhone 16 Динамик полифонический (нижний, громкая связь) - замена",
+      "name": "[i16-SPK] iPhone 16 Динамик полифонический (нижний, громкая связь) - зам��на",
       "price": 6600,
       "duration": null,
       "warranty": 90
@@ -32759,7 +32759,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P929",
-      "name": "[i16-MIC] iPhone 16 Микрофон - замена (один из..) | *требуется диагностика",
+      "name": "[i16-MIC] iPhone 16 Микрофон - замена (��дин из..) | *требуется диагностика",
       "price": 7200,
       "duration": null,
       "warranty": 90
@@ -33216,7 +33216,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 16E",
-    "service": "Дисплей - замена на СНЯТЫЙ ОРИГИНАЛ (бу)",
+    "service": "��исплей - замена на СНЯТЫЙ ОРИГИНАЛ (бу)",
     "warrantyDays": 90,
     "finalPrice": 7000,
     "range": null,
@@ -33593,7 +33593,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P482",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q482",
-      "name": "iPhone 16E [BGL] Крышка (Заднее стекло) - Снятый оригинал Белый / White (модуль)",
+      "name": "iPhone 16E [BGL] Крышка (Заднее ст��кло) - Снятый оригинал Белый / White (модуль)",
       "partId": null,
       "model": "iPhone 16E",
       "category": "Крышка (заднее стекло)",
@@ -34029,7 +34029,7 @@
       "warranty": 180
     },
     "part": {
-      "sheetRef": "БД_ЗАПЧАСТИ!P131",
+      "sheetRef": "БД_ЗАПЧАСТ��!P131",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q131",
       "name": "iPhone 16 Plus [BAT] Аккумулятор - Сервисный оригинал (подлинное)",
       "partId": "56244 252",
@@ -34970,7 +34970,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 16 Plus",
-    "service": "WiFi / Bluetooth - восстановление беспроводных сетей | *цена от, требуется диагностика",
+    "service": "WiFi / Bluetooth - восстановление беспроводных сетей | *цена от, тре��уется диагностика",
     "warrantyDays": 90,
     "finalPrice": 19700,
     "range": null,
@@ -35418,7 +35418,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 16 Pro",
-    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ОРИГИНАЛ (бу)",
+    "service": "Дисплей - замена на ��ОССТАНОВЛЕННЫЙ ОРИГИНАЛ (бу)",
     "warrantyDays": 90,
     "finalPrice": 30800,
     "range": null,
@@ -35824,7 +35824,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P1006",
-      "name": "[i16P-MID] iPhone 16 Pro Корпус (средняя часть) - замена",
+      "name": "[i16P-MID] iPhone 16 Pro Корпус (средняя часть) - з��мена",
       "price": 9500,
       "duration": null,
       "warranty": 180
@@ -36489,7 +36489,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 16 Pro Max",
-    "service": "Дисплей - замена на ВОССТАНОВЛЕННЫЙ ОРИГИНАЛ (бу)",
+    "service": "Дисплей - з��мена на ВОССТАНОВЛЕННЫЙ ОРИГИНАЛ (бу)",
     "warrantyDays": 90,
     "finalPrice": 35300,
     "range": null,
@@ -36941,7 +36941,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P1035",
-      "name": "[i16PM-SPK] iPhone 16 Pro Max Динамик полифонический (нижний, громкая связь) - замена",
+      "name": "[i16PM-SPK] iPhone 16 Pro Max Динам��к полифонический (нижний, громкая связь) - замена",
       "price": 7300,
       "duration": null,
       "warranty": 90
@@ -37666,6 +37666,7 @@
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P1054",
       "name": "[i17-CAMR] iPhone 17 Камера основная - замена",
+      "barcode": "i17-CAMR",
       "price": 8100,
       "duration": null,
       "warranty": 90
@@ -37678,7 +37679,9 @@
       "model": "iPhone 17",
       "category": "Основная камера",
       "purchaseICmp": 5400,
+      "urlICmp": "https://icomponents.ru/catalog/iphone/iphone_17/iphone_17_kamera_osnovnaya_zadnyaya_orig/",
       "purchaseMOS": null,
+      "urlMOS": null,
       "purchase": 5400,
       "markupPct": 50,
       "retailForPrice": 8100,
@@ -37798,7 +37801,7 @@
     "priceListSheetRef": "ПРАЙС_ЛИСТ!F1364",
     "priceListRangeRef": "ПРАЙС_ЛИСТ!G1364",
     "labor": {
-      "sheetRef": "БД_УСЛУГИ_РО!P1058",
+      "sheetRef": "БД_УСЛУГИ_Р��!P1058",
       "name": "[i17-BGL] iPhone 17 Крышка (заднее стекло) - замена",
       "price": 7000,
       "duration": null,
@@ -37807,7 +37810,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P512",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q512",
-      "name": "iPhone 17 [BGL] Крышка (Заднее стекло) - Снятый оригинал Лавандовый / Lavender (модуль)",
+      "name": "iPhone 17 [BGL] Крышка (Задн��е стекло) - Снятый оригинал Лавандовый / Lavender (модуль)",
       "partId": null,
       "model": "iPhone 17",
       "category": "Крышка (заднее стекло)",
@@ -38044,7 +38047,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 17",
-    "service": "Ремонт платы - восстановление / замена | *цена от, требуется диагностика",
+    "service": "Ремонт плат�� - восстановление / замена | *цена от, требуется диагностика",
     "warrantyDays": 90,
     "finalPrice": 8800,
     "range": null,
@@ -38053,7 +38056,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P1065",
-      "name": "[i17-BRD] iPhone 17 Ремонт платы - восстановление / замена | *требуется диагностика",
+      "name": "[i17-BRD] iPhone 17 Ремонт платы - восстановление / замена | *требуется диагности��а",
       "price": 8800,
       "duration": null,
       "warranty": 90
@@ -38251,7 +38254,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 17 Air",
-    "service": "Аккумулятор - замена на СНЯТЫЙ ОРИГИНАЛ",
+    "service": "Аккумулятор - замена на СНЯТЫЙ ОРИГИН��Л",
     "warrantyDays": 180,
     "finalPrice": 9800,
     "range": null,
@@ -38260,7 +38263,7 @@
     "priceListRangeRef": null,
     "labor": {
       "sheetRef": "БД_УСЛУГИ_РО!P1075",
-      "name": "[i17AR-BAT] iPhone 17 AIr Аккумулятор - замена",
+      "name": "[i17AR-BAT] iPhone 17 AIr Акку��улятор - замена",
       "price": 9800,
       "duration": null,
       "warranty": 180
@@ -39381,7 +39384,7 @@
     "code": null,
     "family": "iPhone",
     "model": "iPhone 17 Pro",
-    "service": "Дисплей - замена на СЕРВИСНЫЙ ОРИГИНАЛ",
+    "service": "Дисплей - замена на СЕРВИСНЫЙ ОРИГ��НАЛ",
     "warrantyDays": 90,
     "finalPrice": 43200,
     "range": "38650 - 43200",
@@ -40473,7 +40476,7 @@
     "part": {
       "sheetRef": "БД_ЗАПЧАСТИ!P317",
       "sheetRefRetail": "БД_ЗАПЧАСТИ!Q317",
-      "name": "iPhone 17 Pro Max [DIS] Дисплей - Снятый оригинал (неизвестная деталь)",
+      "name": "iPhone 17 Pro Max [DIS] Дисплей - Снятый ориг��нал (неизвестная деталь)",
       "partId": null,
       "model": "iPhone 17 Pro Max",
       "category": "Дисплей",

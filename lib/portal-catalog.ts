@@ -37,6 +37,8 @@ type RawSource = {
   labor: {
     sheetRef: string;
     name: string;
+    /** Штрихкод услуги в РО (например "i17-CAMR") — из колонки в таблице */
+    barcode?: string | null;
     price: number | null;
     duration: string | null;
     warranty: number | null;
@@ -49,7 +51,9 @@ type RawSource = {
     model: string;
     category: string;
     purchaseICmp: number | null;
+    urlICmp: string | null;
     purchaseMOS: number | null;
+    urlMOS: string | null;
     purchase: number | null;
     markupPct: number | null;
     retailForPrice: number | null;
@@ -204,6 +208,7 @@ function recordToPosition(rec: RawSource): Position {
     key: string;
     label: string;
     price: number | null;
+    url?: string | null;
     sheetRef?: string;
   }> = [];
 
@@ -212,12 +217,14 @@ function recordToPosition(rec: RawSource): Position {
       key: "icomponents",
       label: "iComponents",
       price: part.purchaseICmp,
+      url: part.urlICmp ?? null,
       sheetRef: part.sheetRef.replace(/!P\d+/, `!I${part.sheetRef.match(/\d+/)?.[0] ?? ""}`),
     });
     sources.push({
       key: "moslcd",
       label: "MOS-LCD",
       price: part.purchaseMOS,
+      url: part.urlMOS ?? null,
       sheetRef: part.sheetRef.replace(/!P\d+/, `!L${part.sheetRef.match(/\d+/)?.[0] ?? ""}`),
     });
   }
@@ -244,6 +251,7 @@ function recordToPosition(rec: RawSource): Position {
           unit: "₽",
           source: `парсер: ${s.label}`,
           sheetRef: s.sheetRef,
+          url: s.url ?? undefined,
           note:
             s.price === null
               ? "Парсер не вернул цену — нет в наличии у поставщика"
@@ -451,7 +459,11 @@ function recordToPosition(rec: RawSource): Position {
           ? `Источник истины: ${rec.labor.sheetRef}`
           : undefined,
         roMatch: laborRoKey
-          ? { kind: "service-price", key: laborRoKey }
+          ? {
+              kind: "service-price" as const,
+              key: laborRoKey,
+              serviceBarcode: rec.labor?.barcode ?? null,
+            }
           : undefined,
       },
     ],
@@ -627,7 +639,7 @@ export type PricingFingerprint = {
   /**
    * Идентификаторы запчасти для запроса остатка через РО.
    * Все поля очищены от пробелов; null если в исходной таблице пусто.
-   * Серверу `/api/remonline/stock` достаточно любого одного, чтобы
+   * Серверу `/api/remonline/stock` достаточно ����юбого одного, чтобы
    * найти товар точным фильтром (`ids[]` / `articles[]` / `barcodes[]`).
    */
   partProductId: string | null;

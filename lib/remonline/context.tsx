@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -101,6 +102,37 @@ type CtxValue = {
     string,
     { laborConflicts: number; partConflicts: number; total: number }
   >;
+
+  /**
+   * Переопределить значение / url ячейки в памяти сессии.
+   * Используется для inline-редактирования source-ячеек и наценки.
+   * Изменения живут только в памяти — никуда не записываются автоматически.
+   */
+  overrideCell: (address: string, patch: { value?: number | null; url?: string }) => void;
+
+  /**
+   * Читать локальные переопределения ячеек.
+   * source-ячейки и наценка могут иметь исправленное значение.
+   */
+  cellOverrides: Map<string, { value?: number | null; url?: string }>;
+
+  /**
+   * Убрать локальное переопределение ячейки (например после успешной
+   * синхронизации с РО — чтобы значение снова читалось живьём из РО).
+   */
+  clearOverride: (address: string) => void;
+
+  /**
+   * Список дополнительных source-ячеек, добавленных вручную в сессии.
+   * Ключ: stageAddress (например "iphone-17.camr.sources"), значение — массив ячеек.
+   */
+  addedSources: Map<string, Array<{ label: string; url: string; value: number | null }>>;
+
+  /** Добавить новый источник (поставщика) в стейдж источников */
+  addSource: (
+    stageAddress: string,
+    source: { label: string; url: string; value: number | null },
+  ) => void;
 };
 
 const Ctx = createContext<CtxValue | null>(null);
@@ -137,6 +169,63 @@ export function useCellRoResolution(
     () => resolveCell(services, products, cell, portalValue),
     [services, products, cell, portalValue],
   );
+}
+
+/**
+ * Карта «живых» значений всех ячеек позиции: адрес → эффективное значение.
+ *
+ * Проблема, которую решает: ячейка «Конечная цена» — это ФОРМУЛА
+ * (part.retail_price + labor.price), но её value хранит статичный слепок
+ * Google-таблицы. После того как работа/запчасть стали читаться живьём из РО,
+ * статичная сумма расходится с реальными слагаемыми. Здесь мы пересчитываем
+ * формульные ячейки из живых значений их зависимостей.
+ *
+ * Проход 1: для каждой ячейки берём эффективное значение —
+ *   правка пользователя → живое из РО → статичный слепок.
+ * Проход 2: аддитивные формулы без собственной привязки к РО (например
+ *   итоговая цена) пересчитываем как сумму живых значений зависимостей.
+ */
+export function useLiveValueMap(cells: Cell[]): Map<string, number | null> {
+  const { services, products, cellOverrides } = useRemonline();
+  return useMemo(() => {
+    const map = new Map<string, number | null>();
+
+    // Проход 1 — базовое эффективное значение каждой ячейки.
+    for (const c of cells) {
+      const ov = cellOverrides.get(c.address);
+      if (ov?.value !== undefined) {
+        map.set(c.address, ov.value);
+        continue;
+      }
+      const r = resolveCell(services, products, c, c.value);
+      map.set(
+        c.address,
+        r.state === "resolved" && r.remoteValue !== null
+          ? r.remoteValue
+          : c.value,
+      );
+    }
+
+    // Проход 2 — пересчёт аддитивных формул (итоговая цена) из зависимостей.
+    // Берём только формульные ячейки без собственной привязки к РО, чтобы не
+    // трогать retail/purchase, у которых живое значение приходит напрямую.
+    for (const c of cells) {
+      if (
+        c.kind === "formula" &&
+        !c.roMatch &&
+        c.dependsOn &&
+        c.dependsOn.length > 0
+      ) {
+        const parts = c.dependsOn.map((addr) => map.get(addr));
+        if (parts.every((p) => typeof p === "number")) {
+          const sum = parts.reduce<number>((s, p) => s + (p as number), 0);
+          map.set(c.address, sum);
+        }
+      }
+    }
+
+    return map;
+  }, [cells, services, products, cellOverrides]);
 }
 
 function resolveCell(
@@ -200,6 +289,52 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     () => new Map(),
   );
   const [loadingStockKey, setLoadingStockKey] = useState<string | null>(null);
+
+  // Локальные переопределения ячеек (value, url) — только в памяти сессии.
+  const [cellOverrides, setCellOverrides] = useState<
+    Map<string, { value?: number | null; url?: string }>
+  >(() => new Map());
+
+  // Вручную добавленные source-ячейки (поставщики).
+  const [addedSources, setAddedSources] = useState<
+    Map<string, Array<{ label: string; url: string; value: number | null }>>
+  >(() => new Map());
+
+  const overrideCell = useCallback(
+    (address: string, patch: { value?: number | null; url?: string }) => {
+      setCellOverrides((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(address) ?? {};
+        next.set(address, { ...existing, ...patch });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addSource = useCallback(
+    (
+      stageAddress: string,
+      source: { label: string; url: string; value: number | null },
+    ) => {
+      setAddedSources((prev) => {
+        const next = new Map(prev);
+        const arr = next.get(stageAddress) ?? [];
+        next.set(stageAddress, [...arr, source]);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clearOverride = useCallback((address: string) => {
+    setCellOverrides((prev) => {
+      if (!prev.has(address)) return prev;
+      const next = new Map(prev);
+      next.delete(address);
+      return next;
+    });
+  }, []);
 
   const requestStock = useCallback<CtxValue["requestStock"]>(
     async (key, bind) => {
@@ -288,6 +423,16 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Авто-загрузка snapshot РО один раз при монтировании портала.
+  // Провайдер монтируется один раз на корне PortalShell (не пересоздаётся
+  // при смене позиции), поэтому это один запрос на загрузку страницы.
+  // Благодаря этому ячейки сразу показывают ЖИВУЮ цену из РО, а не
+  // статичный слепок Google-таблицы.
+  useEffect(() => {
+    loadServices();
+    loadProducts();
+  }, [loadServices, loadProducts]);
+
   // ── Сводка конфликтов по устройствам ────────────────────────────────
   // Считается мемоизированно при изменении snapshot: один проход по
   // PRICING_FINGERPRINTS даёт цифру для каждой модели каталога.
@@ -354,6 +499,11 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadingStockKey,
       requestStock,
       conflictByDevice,
+      overrideCell,
+      cellOverrides,
+      clearOverride,
+      addedSources,
+      addSource,
     }),
     [
       services,
@@ -368,6 +518,11 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       loadingStockKey,
       requestStock,
       conflictByDevice,
+      overrideCell,
+      cellOverrides,
+      clearOverride,
+      addedSources,
+      addSource,
     ],
   );
 

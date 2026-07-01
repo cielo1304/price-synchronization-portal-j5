@@ -80,6 +80,57 @@ async function apiGet<T>(
   }
 }
 
+/**
+ * Универсальный PATCH/PUT с Bearer-авторизацией.
+ * Remonline использует PUT для обновления ресурсов (не PATCH).
+ */
+async function apiPut<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${getApiToken()}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `Remonline PUT ${path} вернул HTTP ${res.status}: ${text.slice(0, 300)}`,
+      );
+    }
+    // РО на успешный PUT /services и /products отвечает 204 No Content
+    // с ПУСТЫМ телом. Вызов res.json() на пустом теле бросает
+    // "Unexpected end of JSON input" — поэтому парсим только если тело есть.
+    const raw = await res.text();
+    if (!raw) return {} as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return {} as T;
+    }
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(
+        `Remonline PUT ${path}: таймаут ${REQUEST_TIMEOUT_MS / 1000} сек.`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Доменные типы (минимум полей, что нужны порталу) ───────────────────
 
 export type RoWarehouse = {
@@ -92,8 +143,19 @@ export type RoService = {
   id: number;
   title: string;
   price?: number | null;
+  cost?: number | null;
   duration?: number | null;
   code?: string | null;
+  /**
+   * Цены по типам (прайс-листам): { "<marginId>": значение }.
+   * Здесь лежит "Стандартная цена", "Розничная", "Закупочная" и т.д.
+   */
+  prices?: Record<string, number> | null;
+  /**
+   * Штрихкоды услуги. РО может вернуть массив строк ИЛИ массив объектов
+   * вида { id, code, type } — обрабатываем оба варианта на месте.
+   */
+  barcodes?: Array<string | { id?: number; code?: string; type?: string }> | null;
 };
 
 export type RoProduct = {
@@ -266,7 +328,7 @@ export async function getProductById(
  *
  * Документация (v1.4): https://roapp.readme.io/v1.4/reference/get-stock
  *
- * Точные фильтры — это массивы:
+ * Точные фильтры — это ��ассивы:
  *   • ids[]={product_id}     — внутренний product_id товара в РО.
  *   • articles[]={article}   — артикул (SKU).
  *   • barcodes[]={barcode}   — штрихкод.
@@ -304,5 +366,73 @@ export async function getStock(
     },
     arrays,
   );
+  return unwrapList(json).items;
+}
+
+// ── Запись цен ─────────────────────────────────────────────────────────
+
+/**
+ * Обновить закупочную и/или розничную цену товара в РО.
+ * PUT /products/{id}
+ *
+ * Документация: https://roapp.readme.io/reference/updateproduct
+ * РО требует передавать id товара и хотя бы одно поле для обновления.
+ *
+ * cost   = закупочная цена
+ * price  = розничная цена
+ */
+export async function updateProductPrice(
+  productId: number | string,
+  patch: { cost?: number; price?: number },
+): Promise<RoProduct> {
+  return apiPut<RoProduct>(`/products/${productId}`, patch);
+}
+
+/**
+ * Обновить цены услуги в РО.
+ * PUT /services/{service_id}  →  отвечает 204 No Content (пустое тело).
+ *
+ * Документация: https://roapp.readme.io/v1.4/reference/update-service
+ *
+ * ВАЖНО (проверено живым запросом к API):
+ * - `cost`   — внутренняя себестоимость услуги.
+ * - `prices` — JSON вида {"<marginId>": <значение>}. Именно здесь лежит
+ *   "Стандартная цена" / "Розничная" и т.д. Типы цен возвращает GET /margins/.
+ * Пользователь синхронизирует именно "Стандартную цену", поэтому портал
+ * пишет в prices, а не в cost.
+ */
+export async function updateServicePrice(
+  serviceId: number | string,
+  patch: { cost?: number; prices?: Record<string, number>; duration?: number },
+): Promise<RoService> {
+  return apiPut<RoService>(`/services/${serviceId}`, patch);
+}
+
+/** Тип цены (прайс-лист) в РО */
+export type RoMargin = {
+  id: number;
+  title: string;
+  margin: number;
+};
+
+/**
+ * Список типов цен (прайс-листов). GET /margins/
+ * Возвращает, например: "Закупочная", "Стандартная цена", "Розничная".
+ * Нужен, чтобы сопоставить название типа цены с его id для prices{}.
+ */
+export async function getMargins(): Promise<RoMargin[]> {
+  const json = await apiGet<V2List<RoMargin>>("/margins/");
+  return unwrapList(json).items;
+}
+
+/**
+ * Поиск услуги по штрихкоду или тексту. GET /services/?q=
+ *
+ * Документация: https://roapp.readme.io/v1.4/reference/get-service
+ * Параметры: q — поиск по тексту в title/code/barcode (строка).
+ * barcodes[] в доке описан как int32 — не подходит для строковых штрихкодов.
+ */
+export async function findServiceByQuery(q: string): Promise<RoService[]> {
+  const json = await apiGet<V2List<RoService>>("/services/", { q });
   return unwrapList(json).items;
 }
