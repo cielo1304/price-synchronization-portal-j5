@@ -72,7 +72,11 @@ export async function PATCH(req: Request) {
 
     // ── Услуга ──────────────────────────────────────────────────────────
     if (kind === "service-price") {
-      let match: { id: number | string; title?: string } | null = null;
+      let match: {
+        id: number | string;
+        title?: string;
+        prices?: Record<string, number> | null;
+      } | null = null;
 
       // 1. Точный поиск по штрихкоду через q= (РО ищет по title/code/barcode).
       //    barcodes в ответе РО — массив ОБЪЕКТОВ {id, code, type},
@@ -132,10 +136,13 @@ export async function PATCH(req: Request) {
         );
       }
 
-      // PUT /services/{id} с prices: { "<id Стандартной цены>": value }
-      await updateServicePrice(match.id, {
-        prices: { [String(standard.id)]: value },
-      });
+      // PUT /services/{id}. РО заменяет весь объект prices целиком, поэтому
+      // берём текущие цены услуги и меняем ТОЛЬКО Стандартную цену — иначе
+      // Розничная/Закупочная обнулятся. Себестоимость (cost) НЕ передаём.
+      const currentPrices: Record<string, number> = { ...(match.prices ?? {}) };
+      currentPrices[String(standard.id)] = value;
+
+      await updateServicePrice(match.id, { prices: currentPrices });
       return NextResponse.json({
         ok: true,
         updated: {

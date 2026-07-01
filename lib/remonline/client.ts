@@ -146,8 +146,16 @@ export type RoService = {
   cost?: number | null;
   duration?: number | null;
   code?: string | null;
-  /** Штрихкоды услуги — РО возвращает массив строк */
-  barcodes?: string[] | null;
+  /**
+   * Цены по типам (прайс-листам): { "<marginId>": значение }.
+   * Здесь лежит "Стандартная цена", "Розничная", "Закупочная" и т.д.
+   */
+  prices?: Record<string, number> | null;
+  /**
+   * Штрихкоды услуги. РО может вернуть массив строк ИЛИ массив объектов
+   * вида { id, code, type } — обрабатываем оба варианта на месте.
+   */
+  barcodes?: Array<string | { id?: number; code?: string; type?: string }> | null;
 };
 
 export type RoProduct = {
