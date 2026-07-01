@@ -10,7 +10,7 @@ import {
 } from "@/lib/portal-catalog";
 import { useOverride } from "@/lib/portal-overrides";
 import { useCustomModels } from "@/lib/portal-custom-models";
-import { RemonlineProvider } from "@/lib/remonline/context";
+import { RemonlineProvider, useLiveValueMap } from "@/lib/remonline/context";
 import { SyncPanel } from "./sync-panel";
 import { PositionHeader } from "./position-header";
 import { Legend } from "./legend";
@@ -201,25 +201,12 @@ export function PortalShell({ index, defaultPositionId }: Props) {
                   </div>
                 </div>
 
-                <div className="-mx-5 overflow-x-auto px-5 pb-2">
-                  <div className="flex min-w-max items-start gap-3">
-                    {position.stages.map((stage, i) => (
-                      <div key={stage.id} className="flex items-stretch gap-3">
-                        <PipelineStage
-                          stage={stage}
-                          index={i}
-                          selectedAddress={selectedAddress}
-                          onSelectCell={handleSelectCell}
-                        />
-                        {i < position.stages.length - 1 && (
-                          <div className="flex shrink-0 items-center pt-12">
-                            <ChevronRight className="h-5 w-5 text-muted-foreground/60" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ConveyorStages
+                  position={position}
+                  allCells={allCells}
+                  selectedAddress={selectedAddress}
+                  onSelectCell={handleSelectCell}
+                />
               </section>
 
               <section className="mt-6 rounded-2xl border border-border bg-card/40 p-5">
@@ -233,12 +220,55 @@ export function PortalShell({ index, defaultPositionId }: Props) {
             <CellInspector
               cell={selectedCell}
               onSelectAddress={handleSelectAddress}
+              allCells={allCells}
             />
           </div>
         </div>
       </div>
     </div>
     </RemonlineProvider>
+  );
+}
+
+/**
+ * Конвейер стадий. Вынесен в отдельный компонент, потому что использует
+ * useLiveValueMap (→ useRemonline), а значит должен рендериться ВНУТРИ
+ * RemonlineProvider. Пересчитывает формульные ячейки из живых значений
+ * зависимостей и прокидывает результат в каждую стадию.
+ */
+function ConveyorStages({
+  position,
+  allCells,
+  selectedAddress,
+  onSelectCell,
+}: {
+  position: Position;
+  allCells: Cell[];
+  selectedAddress: string | null;
+  onSelectCell: (cell: Cell) => void;
+}) {
+  const liveValues = useLiveValueMap(allCells);
+  return (
+    <div className="-mx-5 overflow-x-auto px-5 pb-2">
+      <div className="flex min-w-max items-start gap-3">
+        {position.stages.map((stage, i) => (
+          <div key={stage.id} className="flex items-stretch gap-3">
+            <PipelineStage
+              stage={stage}
+              index={i}
+              selectedAddress={selectedAddress}
+              onSelectCell={onSelectCell}
+              liveValues={liveValues}
+            />
+            {i < position.stages.length - 1 && (
+              <div className="flex shrink-0 items-center pt-12">
+                <ChevronRight className="h-5 w-5 text-muted-foreground/60" />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

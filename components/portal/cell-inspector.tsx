@@ -3,11 +3,17 @@
 import type { Cell } from "@/lib/portal-types";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Copy, Link2, FileSpreadsheet } from "lucide-react";
-import { useCellRoResolution, useRemonline } from "@/lib/remonline/context";
+import {
+  useCellRoResolution,
+  useLiveValueMap,
+  useRemonline,
+} from "@/lib/remonline/context";
 
 type Props = {
   cell: Cell | null;
   onSelectAddress: (address: string) => void;
+  /** Все ячейки позиции — нужны для пересчёта формульных значений. */
+  allCells?: Cell[];
 };
 
 const KIND_RU: Record<Cell["kind"], string> = {
@@ -25,7 +31,7 @@ function formatValue(value: number | null, unit: Cell["unit"]): string {
   return `${value.toLocaleString("ru-RU")} ₽`;
 }
 
-export function CellInspector({ cell, onSelectAddress }: Props) {
+export function CellInspector({ cell, onSelectAddress, allCells }: Props) {
   if (!cell) {
     return (
       <aside className="sticky top-6 hidden h-fit w-[320px] shrink-0 rounded-2xl border border-dashed border-border bg-card/40 p-6 text-center xl:block">
@@ -39,19 +45,28 @@ export function CellInspector({ cell, onSelectAddress }: Props) {
     );
   }
 
-  return <CellInspectorBody cell={cell} onSelectAddress={onSelectAddress} />;
+  return (
+    <CellInspectorBody
+      cell={cell}
+      onSelectAddress={onSelectAddress}
+      allCells={allCells ?? []}
+    />
+  );
 }
 
 function CellInspectorBody({
   cell,
   onSelectAddress,
+  allCells,
 }: {
   cell: Cell;
   onSelectAddress: (address: string) => void;
+  allCells: Cell[];
 }) {
   // То же живое значение, что и в ячейке конвейера:
-  // правка пользователя → живое из РО → статичный слепок таблицы.
+  // правка пользователя → живое из РО → пересчёт формулы → статичный слепок.
   const { cellOverrides } = useRemonline();
+  const liveValues = useLiveValueMap(allCells);
   const override = cellOverrides.get(cell.address);
   const hasOverride = override?.value !== undefined;
   const ro = useCellRoResolution(
@@ -59,11 +74,14 @@ function CellInspectorBody({
     hasOverride ? (override?.value ?? null) : cell.value,
   );
   const roValue = ro.state === "resolved" ? ro.remoteValue : null;
+  const computed = liveValues.get(cell.address);
   const effectiveValue = hasOverride
     ? (override?.value ?? null)
     : roValue !== null
       ? roValue
-      : cell.value;
+      : computed !== undefined && computed !== null
+        ? computed
+        : cell.value;
 
   return (
     <aside className="sticky top-6 hidden h-fit w-[320px] shrink-0 rounded-2xl border border-border bg-card p-5 xl:block">

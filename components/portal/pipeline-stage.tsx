@@ -18,6 +18,11 @@ type Props = {
    * Передавать только в стадии "markup".
    */
   onMarkupChange?: (newPct: number) => void;
+  /**
+   * Карта пересчитанных «живых» значений (адрес → значение) для формульных
+   * ячеек. Приходит из portal-shell.
+   */
+  liveValues?: Map<string, number | null>;
 };
 
 export function PipelineStage({
@@ -26,6 +31,7 @@ export function PipelineStage({
   selectedAddress,
   onSelectCell,
   onMarkupChange,
+  liveValues,
 }: Props) {
   const isPlaceholder = stage.placeholder;
   const { addSource, addedSources, overrideCell } = useRemonline();
@@ -97,6 +103,7 @@ export function PipelineStage({
             selected={selectedAddress === cell.address}
             onSelect={onSelectCell}
             onMarkupChange={onMarkupChange}
+            computedValue={liveValues?.get(cell.address)}
           />
         ))}
 

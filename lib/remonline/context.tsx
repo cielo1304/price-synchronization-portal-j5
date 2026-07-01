@@ -171,6 +171,63 @@ export function useCellRoResolution(
   );
 }
 
+/**
+ * Карта «живых» значений всех ячеек позиции: адрес → эффективное значение.
+ *
+ * Проблема, которую решает: ячейка «Конечная цена» — это ФОРМУЛА
+ * (part.retail_price + labor.price), но её value хранит статичный слепок
+ * Google-таблицы. После того как работа/запчасть стали читаться живьём из РО,
+ * статичная сумма расходится с реальными слагаемыми. Здесь мы пересчитываем
+ * формульные ячейки из живых значений их зависимостей.
+ *
+ * Проход 1: для каждой ячейки берём эффективное значение —
+ *   правка пользователя → живое из РО → статичный слепок.
+ * Проход 2: аддитивные формулы без собственной привязки к РО (например
+ *   итоговая цена) пересчитываем как сумму живых значений зависимостей.
+ */
+export function useLiveValueMap(cells: Cell[]): Map<string, number | null> {
+  const { services, products, cellOverrides } = useRemonline();
+  return useMemo(() => {
+    const map = new Map<string, number | null>();
+
+    // Проход 1 — базовое эффективное значение каждой ячейки.
+    for (const c of cells) {
+      const ov = cellOverrides.get(c.address);
+      if (ov?.value !== undefined) {
+        map.set(c.address, ov.value);
+        continue;
+      }
+      const r = resolveCell(services, products, c, c.value);
+      map.set(
+        c.address,
+        r.state === "resolved" && r.remoteValue !== null
+          ? r.remoteValue
+          : c.value,
+      );
+    }
+
+    // Проход 2 — пересчёт аддитивных формул (итоговая цена) из зависимостей.
+    // Берём только формульные ячейки без собственной привязки к РО, чтобы не
+    // трогать retail/purchase, у которых живое значение приходит напрямую.
+    for (const c of cells) {
+      if (
+        c.kind === "formula" &&
+        !c.roMatch &&
+        c.dependsOn &&
+        c.dependsOn.length > 0
+      ) {
+        const parts = c.dependsOn.map((addr) => map.get(addr));
+        if (parts.every((p) => typeof p === "number")) {
+          const sum = parts.reduce<number>((s, p) => s + (p as number), 0);
+          map.set(c.address, sum);
+        }
+      }
+    }
+
+    return map;
+  }, [cells, services, products, cellOverrides]);
+}
+
 function resolveCell(
   services: ServicesSnapshot | null,
   products: ProductsSnapshot | null,

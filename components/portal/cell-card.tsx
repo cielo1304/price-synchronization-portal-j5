@@ -69,9 +69,21 @@ type Props = {
    * пересчитать зависимые ячейки (part.retail_price, service.final_price).
    */
   onMarkupChange?: (newPct: number) => void;
+  /**
+   * Пересчитанное «живое» значение для формульных ячеек (например итоговая
+   * цена = живая запчасть + живая работа). Считается в portal-shell, где
+   * доступны все ячейки-зависимости. Имеет приоритет над статичным cell.value.
+   */
+  computedValue?: number | null;
 };
 
-export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
+export function CellCard({
+  cell,
+  selected,
+  onSelect,
+  onMarkupChange,
+  computedValue,
+}: Props) {
   const meta = KIND_META[cell.kind];
   const Icon = meta.icon;
 
@@ -103,12 +115,15 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
   // Что показываем как основное значение ячейки:
   //  1) правка пользователя (если редактировал) →
   //  2) живое значение из РО (если snapshot загружен) →
-  //  3) статичный слепок таблицы (fallback до загрузки РО).
+  //  3) пересчитанное значение формулы из живых зависимостей →
+  //  4) статичный слепок таблицы (fallback до загрузки РО).
   const effectiveValue = hasOverride
     ? (pendingValue ?? null)
     : roValue !== null
       ? roValue
-      : cell.value;
+      : computedValue !== undefined && computedValue !== null
+        ? computedValue
+        : cell.value;
 
   const [stockError, setStockError] = useState<string | null>(null);
 
