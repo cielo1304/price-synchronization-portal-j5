@@ -100,6 +100,19 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
   const roResolved = ro.state === "resolved";
   const roValue = roResolved ? ro.remoteValue : null;
 
+  // Прямая ссылка на карточку в веб-интерфейсе РО.
+  //  • услуги  → /company/services-pricelist/{id}
+  //  • товары  → /warehouse/residue/{id}
+  const roKind = cell.roMatch?.kind;
+  const roDeepLink =
+    ro.state === "resolved"
+      ? roKind === "service-price" || roKind === "service-duration"
+        ? `https://web.roapp.io/company/services-pricelist/${ro.roId}`
+        : roKind === "part-purchase" || roKind === "part-retail"
+          ? `https://web.roapp.io/warehouse/residue/${ro.roId}`
+          : null
+      : null;
+
   // Что показываем как основное значение ячейки:
   //  1) правка пользователя (если редактировал) →
   //  2) живое значение из РО (если snapshot загружен) →
@@ -426,6 +439,19 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
               {formatRoValue(ro.remoteValue, cell.unit)}
             </span>
           </div>
+
+          {roDeepLink && (
+            <a
+              href={roDeepLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-money/30 bg-card px-3 py-1.5 text-[11px] font-medium text-money transition hover:bg-money-muted"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Открыть в РО
+            </a>
+          )}
 
           {isMismatch && (
             <>
