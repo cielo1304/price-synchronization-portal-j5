@@ -3,6 +3,7 @@
 import type { Cell } from "@/lib/portal-types";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Copy, Link2, FileSpreadsheet } from "lucide-react";
+import { useCellRoResolution, useRemonline } from "@/lib/remonline/context";
 
 type Props = {
   cell: Cell | null;
@@ -17,11 +18,11 @@ const KIND_RU: Record<Cell["kind"], string> = {
   output: "Выгрузка",
 };
 
-function formatValue(cell: Cell): string {
-  if (cell.value === null) return "—";
-  if (cell.unit === "%") return `${cell.value} %`;
-  if (cell.unit === "min") return `${cell.value} мин`;
-  return `${cell.value.toLocaleString("ru-RU")} ₽`;
+function formatValue(value: number | null, unit: Cell["unit"]): string {
+  if (value === null) return "—";
+  if (unit === "%") return `${value} %`;
+  if (unit === "min") return `${value} мин`;
+  return `${value.toLocaleString("ru-RU")} ₽`;
 }
 
 export function CellInspector({ cell, onSelectAddress }: Props) {
@@ -37,6 +38,32 @@ export function CellInspector({ cell, onSelectAddress }: Props) {
       </aside>
     );
   }
+
+  return <CellInspectorBody cell={cell} onSelectAddress={onSelectAddress} />;
+}
+
+function CellInspectorBody({
+  cell,
+  onSelectAddress,
+}: {
+  cell: Cell;
+  onSelectAddress: (address: string) => void;
+}) {
+  // То же живое значение, что и в ячейке конвейера:
+  // правка пользователя → живое из РО → статичный слепок таблицы.
+  const { cellOverrides } = useRemonline();
+  const override = cellOverrides.get(cell.address);
+  const hasOverride = override?.value !== undefined;
+  const ro = useCellRoResolution(
+    cell,
+    hasOverride ? (override?.value ?? null) : cell.value,
+  );
+  const roValue = ro.state === "resolved" ? ro.remoteValue : null;
+  const effectiveValue = hasOverride
+    ? (override?.value ?? null)
+    : roValue !== null
+      ? roValue
+      : cell.value;
 
   return (
     <aside className="sticky top-6 hidden h-fit w-[320px] shrink-0 rounded-2xl border border-border bg-card p-5 xl:block">
@@ -68,7 +95,7 @@ export function CellInspector({ cell, onSelectAddress }: Props) {
               : "text-foreground"
         )}
       >
-        {formatValue(cell)}
+        {formatValue(effectiveValue, cell.unit)}
       </div>
 
       <div className="mt-5 space-y-4">

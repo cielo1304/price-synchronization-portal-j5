@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -114,6 +115,12 @@ type CtxValue = {
    * source-ячейки и наценка могут иметь исправленное значение.
    */
   cellOverrides: Map<string, { value?: number | null; url?: string }>;
+
+  /**
+   * Убрать локальное переопределение ячейки (например после успешной
+   * синхронизации с РО — чтобы значение снова читалось живьём из РО).
+   */
+  clearOverride: (address: string) => void;
 
   /**
    * Список дополнительных source-ячеек, добавленных вручную в сессии.
@@ -263,6 +270,15 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const clearOverride = useCallback((address: string) => {
+    setCellOverrides((prev) => {
+      if (!prev.has(address)) return prev;
+      const next = new Map(prev);
+      next.delete(address);
+      return next;
+    });
+  }, []);
+
   const requestStock = useCallback<CtxValue["requestStock"]>(
     async (key, bind) => {
       setLoadingStockKey(key);
@@ -350,6 +366,16 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Авто-загрузка snapshot РО один раз при монтировании портала.
+  // Провайдер монтируется один раз на корне PortalShell (не пересоздаётся
+  // при смене позиции), поэтому это один запрос на загрузку страницы.
+  // Благодаря этому ячейки сразу показывают ЖИВУЮ цену из РО, а не
+  // статичный слепок Google-таблицы.
+  useEffect(() => {
+    loadServices();
+    loadProducts();
+  }, [loadServices, loadProducts]);
+
   // ── Сводка конфликтов по устройствам ────────────────────────────────
   // Считается мемоизированно при изменении snapshot: один проход по
   // PRICING_FINGERPRINTS даёт цифру для каждой модели каталога.
@@ -418,6 +444,7 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       conflictByDevice,
       overrideCell,
       cellOverrides,
+      clearOverride,
       addedSources,
       addSource,
     }),
@@ -436,6 +463,7 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
       conflictByDevice,
       overrideCell,
       cellOverrides,
+      clearOverride,
       addedSources,
       addSource,
     ],

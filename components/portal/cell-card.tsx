@@ -75,13 +75,41 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
   const meta = KIND_META[cell.kind];
   const Icon = meta.icon;
 
-  const { overrideCell, cellOverrides, stockByKey, loadingStockKey, requestStock } =
-    useRemonline();
+  const {
+    overrideCell,
+    cellOverrides,
+    clearOverride,
+    loadServices,
+    loadProducts,
+    stockByKey,
+    loadingStockKey,
+    requestStock,
+  } = useRemonline();
   const override = cellOverrides.get(cell.address);
-  const effectiveValue = override?.value !== undefined ? override.value : cell.value;
+  const hasOverride = override?.value !== undefined;
+  // Правка пользователя (если ячейку редактировали). null = очищено, undefined = не трогали.
+  const pendingValue = override?.value;
   const effectiveUrl = override?.url ?? cell.url;
 
-  const ro = useCellRoResolution(cell, effectiveValue);
+  // Резолвим живое значение из РО. Для сравнения передаём то, что
+  // «портал хочет отправить»: правку пользователя либо статику таблицы.
+  const ro = useCellRoResolution(
+    cell,
+    hasOverride ? (pendingValue ?? null) : cell.value,
+  );
+  const roResolved = ro.state === "resolved";
+  const roValue = roResolved ? ro.remoteValue : null;
+
+  // Что показываем как основное значение ячейки:
+  //  1) правка пользователя (если редактировал) →
+  //  2) живое значение из РО (если snapshot загружен) →
+  //  3) статичный слепок таблицы (fallback до загрузки РО).
+  const effectiveValue = hasOverride
+    ? (pendingValue ?? null)
+    : roValue !== null
+      ? roValue
+      : cell.value;
+
   const [stockError, setStockError] = useState<string | null>(null);
 
   // ── Inline-редактирование (source-ячейки и наценка) ─────────────────
@@ -127,17 +155,25 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
     { ok: true } | { ok: false; error: string } | null
   >(null);
 
-  const isMismatch = ro.state === "resolved" && !ro.inSync;
-  const canSync =
-    isMismatch &&
-    effectiveValue !== null &&
-    (cell.roMatch?.kind === "part-purchase" ||
-      cell.roMatch?.kind === "part-retail" ||
-      cell.roMatch?.kind === "service-price");
+  const isSyncableKind =
+    cell.roMatch?.kind === "part-purchase" ||
+    cell.roMatch?.kind === "part-retail" ||
+    cell.roMatch?.kind === "service-price";
+
+  // «Нужна синхронизация» — когда пользователь ввёл значение, отличное от
+  // текущего в РО. Без правок ячейка показывает живое значение РО = синхронно.
+  const needsSync =
+    hasOverride &&
+    pendingValue !== null &&
+    pendingValue !== undefined &&
+    isSyncableKind &&
+    (roValue === null || pendingValue !== roValue);
+  const isMismatch = needsSync;
+  const canSync = needsSync;
 
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!canSync || !cell.roMatch) return;
+    if (!canSync || !cell.roMatch || pendingValue == null) return;
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -147,7 +183,7 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
         body: JSON.stringify({
           kind: cell.roMatch.kind,
           key: cell.roMatch.key,
-          value: effectiveValue,
+          value: pendingValue,
           partProductId: cell.roMatch.partProductId ?? null,
           partCode: cell.roMatch.partCode ?? null,
           partArticle: cell.roMatch.partArticle ?? null,
@@ -156,7 +192,19 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
         }),
       });
       const json = await res.json();
-      setSyncResult(json.ok ? { ok: true } : { ok: false, error: json.error ?? "Ошибка" });
+      if (json.ok) {
+        setSyncResult({ ok: true });
+        // Правку убираем, а snapshot перечитываем — ячейка снова покажет
+        // значение живьём из РО (теперь уже обновлённое).
+        clearOverride(cell.address);
+        if (cell.roMatch.kind === "service-price") {
+          await loadServices();
+        } else {
+          await loadProducts();
+        }
+      } else {
+        setSyncResult({ ok: false, error: json.error ?? "Ошибка" });
+      }
     } catch (err) {
       setSyncResult({ ok: false, error: err instanceof Error ? err.message : "Ошибка" });
     } finally {
@@ -239,7 +287,7 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
               РО
             </span>
           )}
-          {ro.state === "resolved" && ro.inSync && (
+          {roResolved && !needsSync && (
             <span className="ml-auto flex items-center gap-1 rounded-full bg-money-muted px-1.5 py-0.5 text-[9px] font-semibold text-money">
               <CheckCircle2 className="h-2.5 w-2.5" />
               РО
@@ -384,11 +432,11 @@ export function CellCard({ cell, selected, onSelect, onMarkupChange }: Props) {
               <div className="mt-1 flex items-center gap-2 rounded-md bg-rose-100 px-2 py-1.5">
                 <ArrowUpDown className="h-3 w-3 shrink-0 text-rose-600" />
                 <span className="text-[10px] leading-snug text-rose-800">
-                  Портал:{" "}
+                  Ваше значение:{" "}
                   <span className="font-semibold tabular-nums">
-                    {formatRoValue(effectiveValue, cell.unit)}
+                    {formatRoValue(pendingValue ?? null, cell.unit)}
                   </span>
-                  {" "}vs РО:{" "}
+                  {" "}сейчас в РО:{" "}
                   <span className="font-semibold tabular-nums">
                     {formatRoValue(ro.remoteValue, cell.unit)}
                   </span>
