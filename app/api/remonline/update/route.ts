@@ -3,6 +3,7 @@ import {
   updateProductPrice,
   updateServicePrice,
   findServiceByQuery,
+  getMargins,
   getStock,
   listWarehouses,
   getProductById,
@@ -73,17 +74,23 @@ export async function PATCH(req: Request) {
     if (kind === "service-price") {
       let match: { id: number | string; title?: string } | null = null;
 
-      // 1. Точный поиск по штрихкоду через q=
-      //    Штрихкод в РО может быть числом (int32) или строкой — приводим к строке.
+      // 1. Точный поиск по штрихкоду через q= (РО ищет по title/code/barcode).
+      //    barcodes в ответе РО — массив ОБЪЕКТОВ {id, code, type},
+      //    поэтому сравниваем именно по полю code.
       if (serviceBarcode) {
         const needle = String(serviceBarcode).trim().toLowerCase();
-        console.log("[v0] findServiceByQuery needle:", needle);
         const results = await findServiceByQuery(needle);
-        console.log("[v0] findServiceByQuery results count:", results.length, results.map(r => ({ id: r.id, title: r.title, barcodes: r.barcodes })));
         match =
           results.find((s) =>
             (s.barcodes ?? []).some(
-              (b) => String(b).trim().toLowerCase() === needle,
+              (b) =>
+                String(
+                  typeof b === "object" && b !== null
+                    ? (b as { code?: string }).code
+                    : b,
+                )
+                  .trim()
+                  .toLowerCase() === needle,
             ),
           ) ??
           results[0] ??
@@ -92,12 +99,10 @@ export async function PATCH(req: Request) {
 
       // 2. Фоллбек: полный перебор по нормализованному имени
       if (!match) {
-        console.log("[v0] serviceBarcode не дал результата, пробуем по имени. key:", key);
         const services = await fetchAllServices();
         match =
           services.find((s) => normalizeName(String(s.title ?? "")) === key) ??
           null;
-        console.log("[v0] fetchAllServices fallback match:", match ? { id: match.id, title: match.title } : null);
       }
 
       if (!match) {
@@ -110,11 +115,35 @@ export async function PATCH(req: Request) {
         );
       }
 
-      // Поле в PUT /services/{id} называется "cost" (проверено по доке v1.4)
-      await updateServicePrice(match.id, { cost: value });
+      // Портал синхронизирует "Стандартную цену" — это тип цены (margin),
+      // а не поле cost. Находим его id динамически через GET /margins/.
+      const margins = await getMargins();
+      const standard =
+        margins.find((m) => normalizeName(m.title) === normalizeName("Стандартная цена")) ??
+        null;
+
+      if (!standard) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `В Remonline не найден тип цены «Стандартная цена». Доступны: ${margins.map((m) => m.title).join(", ")}`,
+          },
+          { status: 404 },
+        );
+      }
+
+      // PUT /services/{id} с prices: { "<id Стандартной цены>": value }
+      await updateServicePrice(match.id, {
+        prices: { [String(standard.id)]: value },
+      });
       return NextResponse.json({
         ok: true,
-        updated: { id: match.id, title: match.title, newCost: value },
+        updated: {
+          id: match.id,
+          title: match.title,
+          priceType: standard.title,
+          newPrice: value,
+        },
       });
     }
 

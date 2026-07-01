@@ -109,7 +109,16 @@ async function apiPut<T>(
         `Remonline PUT ${path} вернул HTTP ${res.status}: ${text.slice(0, 300)}`,
       );
     }
-    return (await res.json()) as T;
+    // РО на успешный PUT /services и /products отвечает 204 No Content
+    // с ПУСТЫМ телом. Вызов res.json() на пустом теле бросает
+    // "Unexpected end of JSON input" — поэтому парсим только если тело есть.
+    const raw = await res.text();
+    if (!raw) return {} as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return {} as T;
+    }
   } catch (err) {
     if ((err as Error).name === "AbortError") {
       throw new Error(
@@ -372,17 +381,40 @@ export async function updateProductPrice(
 }
 
 /**
- * Обновить стоимость услуги в РО.
- * PUT /services/{service_id}
+ * Обновить цены услуги в РО.
+ * PUT /services/{service_id}  →  отвечает 204 No Content (пустое тело).
  *
  * Документация: https://roapp.readme.io/v1.4/reference/update-service
- * Поле: cost = стандартная стоимость услуги (не "price" — проверено по доке).
+ *
+ * ВАЖНО (проверено живым запросом к API):
+ * - `cost`   — внутренняя себестоимость услуги.
+ * - `prices` — JSON вида {"<marginId>": <значение>}. Именно здесь лежит
+ *   "Стандартная цена" / "Розничная" и т.д. Типы цен возвращает GET /margins/.
+ * Пользователь синхронизирует именно "Стандартную цену", поэтому портал
+ * пишет в prices, а не в cost.
  */
 export async function updateServicePrice(
   serviceId: number | string,
-  patch: { cost?: number; duration?: number },
+  patch: { cost?: number; prices?: Record<string, number>; duration?: number },
 ): Promise<RoService> {
   return apiPut<RoService>(`/services/${serviceId}`, patch);
+}
+
+/** Тип цены (прайс-лист) в РО */
+export type RoMargin = {
+  id: number;
+  title: string;
+  margin: number;
+};
+
+/**
+ * Список типов цен (прайс-листов). GET /margins/
+ * Возвращает, например: "Закупочная", "Стандартная цена", "Розничная".
+ * Нужен, чтобы сопоставить название типа цены с его id для prices{}.
+ */
+export async function getMargins(): Promise<RoMargin[]> {
+  const json = await apiGet<V2List<RoMargin>>("/margins/");
+  return unwrapList(json).items;
 }
 
 /**
