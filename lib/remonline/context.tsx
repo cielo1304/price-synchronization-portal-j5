@@ -222,12 +222,9 @@ export function useLiveValueMap(cells: Cell[]): Map<string, number | null> {
       );
       const purchase = map.get(purchaseAddress);
       const markup = map.get(markupAddress);
-      const purchaseWasChanged = cellOverrides.has(purchaseAddress);
-      if (
-        typeof purchase === "number" &&
-        typeof markup === "number" &&
-        (map.get(c.address) === null || map.get(c.address) === undefined || purchaseWasChanged)
-      ) {
+      if (typeof purchase === "number" && typeof markup === "number") {
+        // 04 всегда строится из текущих значений 02 и наценки, иначе старый
+        // слепок цены из прайса блокирует пересчёт 06.
         map.set(c.address, Math.round((purchase * (1 + markup / 100)) / 50) * 50);
       }
     }
