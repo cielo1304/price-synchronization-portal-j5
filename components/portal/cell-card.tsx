@@ -129,8 +129,11 @@ export function CellCard({
 
   // ── Inline-редактирование (source-ячейки и наценка) ─────────────────
   const isPurchasePrice = cell.roMatch?.kind === "part-purchase";
+  // Закупочная ячейка остаётся редактируемой даже без roMatch — например,
+  // для детали с пометкой «АНАЛОГ (неизвестная деталь)».
+  const isPurchaseCell = cell.address.endsWith(".part.purchase_price");
   const isEditable =
-    cell.kind === "source" || cell.kind === "manual" || isPurchasePrice;
+    cell.kind === "source" || cell.kind === "manual" || isPurchasePrice || isPurchaseCell;
   const isMarkup = cell.kind === "manual" && cell.unit === "%";
   const [editing, setEditing] = useState(false);
   const [editPrice, setEditPrice] = useState<string>("");
@@ -585,7 +588,7 @@ export function CellCard({
             </div>
           )}
 
-          {/* Диагностика: исходник → РО */}
+          {/* Диагностика: ис��одник → РО */}
           <div className="mt-2 space-y-1 rounded-md border border-border/60 bg-background/60 p-1.5">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
               исходник → РО
