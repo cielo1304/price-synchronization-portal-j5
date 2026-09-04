@@ -206,9 +206,34 @@ export function useLiveValueMap(cells: Cell[]): Map<string, number | null> {
       );
     }
 
-    // Проход 2 — пересчёт аддитивных формул (итоговая цена) из зависимостей.
-    // Берём только формульные ячейки без собственной привязки к РО, чтобы не
-    // трогать retail/purchase, у которых живое значение приходит напрямую.
+    // Проход 2 — сначала восстанавливаем 04 «Цена запчасти».
+    // У неизвестной детали Remonline может не вернуть розничную цену, а в
+    // прайсе она бывает пустой. В этом случае 04 всё равно должна считаться
+    // из эффективных 02 «Закупочная» и наценки.
+    for (const c of cells) {
+      if (!c.address.endsWith(".part.retail_price")) continue;
+      const purchaseAddress = c.address.replace(
+        ".part.retail_price",
+        ".part.purchase_price",
+      );
+      const markupAddress = c.address.replace(
+        ".part.retail_price",
+        ".part.markup_pct",
+      );
+      const purchase = map.get(purchaseAddress);
+      const markup = map.get(markupAddress);
+      const purchaseWasChanged = cellOverrides.has(purchaseAddress);
+      if (
+        typeof purchase === "number" &&
+        typeof markup === "number" &&
+        (map.get(c.address) === null || map.get(c.address) === undefined || purchaseWasChanged)
+      ) {
+        map.set(c.address, Math.round((purchase * (1 + markup / 100)) / 50) * 50);
+      }
+    }
+
+    // Проход 3 — пересчёт аддитивных формул (06 «Конечная цена») из
+    // эффективных зависимостей, включая только что восстановленную 04.
     for (const c of cells) {
       if (
         c.kind === "formula" &&
