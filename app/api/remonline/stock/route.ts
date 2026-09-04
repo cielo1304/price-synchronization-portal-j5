@@ -61,7 +61,10 @@ export async function POST(req: Request) {
     // и пробуем первым. Дубликаты по значению убираем, чтобы не звонить
     // в РО второй раз с тем же фильтром (Код часто == ID).
     const probesRaw: Probe[] = [
+      // В РО «Код» часто является внутренним product_id, но это не всегда
+      // то же поле, что partProductId в исходной таблице. Пробуем оба.
       { kind: "productId", value: clean(body.partProductId) },
+      { kind: "productId", value: clean(body.partCode) },
       { kind: "barcode", value: clean(body.partBarcode) },
       { kind: "article", value: clean(body.partArticle ?? body.roArticle) },
     ];
