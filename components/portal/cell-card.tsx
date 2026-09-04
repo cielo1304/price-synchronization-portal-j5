@@ -128,7 +128,9 @@ export function CellCard({
   const [stockError, setStockError] = useState<string | null>(null);
 
   // ── Inline-редактирование (source-ячейки и наценка) ─────────────────
-  const isEditable = cell.kind === "source" || cell.kind === "manual";
+  const isPurchasePrice = cell.roMatch?.kind === "part-purchase";
+  const isEditable =
+    cell.kind === "source" || cell.kind === "manual" || isPurchasePrice;
   const isMarkup = cell.kind === "manual" && cell.unit === "%";
   const [editing, setEditing] = useState(false);
   const [editPrice, setEditPrice] = useState<string>("");
@@ -210,7 +212,7 @@ export function CellCard({
       if (json.ok) {
         setSyncResult({ ok: true });
         // Правку убираем, а snapshot перечитываем — ячейка снова покажет
-        // значение живьём из РО (теперь уже обновлённое).
+        // значен��е живьём из РО (теперь уже обновлённое).
         clearOverride(cell.address);
         if (cell.roMatch.kind === "service-price") {
           await loadServices();
