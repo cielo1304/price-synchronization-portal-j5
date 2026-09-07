@@ -306,9 +306,17 @@ export function CellCard({
   return (
     <div className={styles}>
       {/* ── Шапка ── */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onSelect?.(cell)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect?.(cell);
+          }
+        }}
         className="w-full text-left"
       >
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
@@ -383,7 +391,7 @@ export function CellCard({
             )}
           </div>
         )}
-      </button>
+      </div>
 
       {/* ── Inline-форма редактирования ── */}
       {editing && (
