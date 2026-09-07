@@ -9,7 +9,10 @@ import {
   customStubsFromModels,
 } from "@/lib/portal-catalog";
 import { useOverride } from "@/lib/portal-overrides";
-import { useCustomModels } from "@/lib/portal-custom-models";
+import {
+  useCustomModels,
+  useHiddenPositionIds,
+} from "@/lib/portal-custom-models";
 import { RemonlineProvider, useLiveValueMap } from "@/lib/remonline/context";
 import { SyncPanel } from "./sync-panel";
 import { PositionHeader } from "./position-header";
@@ -33,12 +36,17 @@ export function PortalShell({ index, defaultPositionId }: Props) {
 
   // Пользовательские модели (новый iPhone 18 и т.п.) — реактивно из localStorage.
   const customModels = useCustomModels();
+  const hiddenPositionIds = useHiddenPositionIds();
 
-  // Полный каталог = базовый + пользовательские модели.
-  const fullIndex = useMemo(() => {
+  // Полный каталог = базовый + пользовательские модели, без скрытых позиций.
+  const allIndex = useMemo(() => {
     const customStubs = customStubsFromModels(customModels);
     return customStubs.length > 0 ? [...customStubs, ...index] : index;
   }, [index, customModels]);
+  const fullIndex = useMemo(() => {
+    const hidden = new Set(hiddenPositionIds);
+    return allIndex.filter((position) => !hidden.has(position.id));
+  }, [allIndex, hiddenPositionIds]);
 
   // Полная позиция строится лениво только для активного id.
   const basePosition = useMemo(() => {
@@ -160,6 +168,7 @@ export function PortalShell({ index, defaultPositionId }: Props) {
       <div className="flex gap-6">
         <CatalogNav
           positions={fullIndex}
+          allPositions={allIndex}
           selectedId={selectedPositionId}
           onSelect={handleSelectPosition}
         />

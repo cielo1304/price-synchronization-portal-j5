@@ -42,8 +42,11 @@ export type CustomModel = {
 };
 
 const STORAGE_KEY = "maxmobiles.portal.custom_models.v1";
+const HIDDEN_POSITIONS_KEY = "maxmobiles.portal.hidden_positions.v1";
 
 let cache: CustomModel[] | null = null;
+let hiddenCache: string[] | null = null;
+const hiddenListeners = new Set<() => void>();
 const listeners = new Set<() => void>();
 
 function read(): CustomModel[] {
@@ -81,6 +84,7 @@ function subscribe(listener: () => void) {
 }
 
 const EMPTY: CustomModel[] = [];
+const EMPTY_HIDDEN: string[] = [];
 
 export function getCustomModels(): CustomModel[] {
   return read();
@@ -107,6 +111,49 @@ export function addCustomModel(input: {
 
 export function removeCustomModel(id: string) {
   write(read().filter((m) => m.id !== id));
+}
+
+function readHidden(): string[] {
+  if (hiddenCache !== null) return hiddenCache;
+  if (typeof window === "undefined") return (hiddenCache = []);
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_POSITIONS_KEY);
+    hiddenCache = raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    hiddenCache = [];
+  }
+  return hiddenCache;
+}
+
+function writeHidden(next: string[]) {
+  hiddenCache = next;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(HIDDEN_POSITIONS_KEY, JSON.stringify(next));
+    } catch {
+      // игнорируем переполнение или блокировку хранилища
+    }
+  }
+  hiddenListeners.forEach((listener) => listener());
+}
+
+export function hidePosition(id: string) {
+  if (!readHidden().includes(id)) writeHidden([...readHidden(), id]);
+}
+
+export function restorePosition(id: string) {
+  writeHidden(readHidden().filter((hiddenId) => hiddenId !== id));
+}
+
+export function useHiddenPositionIds(): string[] {
+  return useSyncExternalStore(
+    (listener) => {
+      hiddenListeners.add(listener);
+      return () => hiddenListeners.delete(listener);
+    },
+    () => readHidden(),
+    () => EMPTY_HIDDEN,
+  );
 }
 
 /** React-хук — возвращает живой список и перерисовывает при изменении */
