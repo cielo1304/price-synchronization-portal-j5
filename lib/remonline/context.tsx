@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { Cell } from "@/lib/portal-types";
@@ -108,13 +109,19 @@ type CtxValue = {
    * Используется для inline-редактирования source-ячеек и наценки.
    * Изменения живут только в памяти — никуда не записываются автоматически.
    */
-  overrideCell: (address: string, patch: { value?: number | null; url?: string }) => void;
+  overrideCell: (
+    address: string,
+    patch: { value?: number | null; url?: string; roUrl?: string },
+  ) => void;
 
   /**
    * Читать локальные переопределения ячеек.
    * source-ячейки и наценка могут иметь исправленное значение.
    */
-  cellOverrides: Map<string, { value?: number | null; url?: string }>;
+  cellOverrides: Map<
+    string,
+    { value?: number | null; url?: string; roUrl?: string }
+  >;
 
   /**
    * Убрать локальное переопределение ячейки (например после успешной
@@ -314,7 +321,7 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
 
   // Локальные переопределения ячеек (value, url) — только в памяти сессии.
   const [cellOverrides, setCellOverrides] = useState<
-    Map<string, { value?: number | null; url?: string }>
+    Map<string, { value?: number | null; url?: string; roUrl?: string }>
   >(() => new Map());
 
   // Вручную добавленные source-ячейки (поставщики).
@@ -322,8 +329,44 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
     Map<string, Array<{ label: string; url: string; value: number | null }>>
   >(() => new Map());
 
+  // Ячейчные правки должны переживать перезагрузку страницы. Читаем их
+  // только после монтирования, чтобы не нарушать SSR-гидратацию.
+  const overridesHydrated = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("maxmobiles.portal.cell-overrides.v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<
+          string,
+          { value?: number | null; url?: string; roUrl?: string }
+        >;
+        setCellOverrides(new Map(Object.entries(parsed)));
+      }
+    } catch {
+      // Повреждённое или недоступное хранилище не должно ломать портал.
+    } finally {
+      overridesHydrated.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!overridesHydrated.current) return;
+    try {
+      const serialized = Object.fromEntries(cellOverrides);
+      window.localStorage.setItem(
+        "maxmobiles.portal.cell-overrides.v1",
+        JSON.stringify(serialized),
+      );
+    } catch {
+      // Игнорируем блокировку или переполнение localStorage.
+    }
+  }, [cellOverrides]);
+
   const overrideCell = useCallback(
-    (address: string, patch: { value?: number | null; url?: string }) => {
+    (
+      address: string,
+      patch: { value?: number | null; url?: string; roUrl?: string },
+    ) => {
       setCellOverrides((prev) => {
         const next = new Map(prev);
         const existing = next.get(address) ?? {};

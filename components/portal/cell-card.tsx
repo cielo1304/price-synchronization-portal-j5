@@ -102,6 +102,8 @@ export function CellCard({
   // Правка пользователя (если ячейку редактировали). null = очищено, undefined = не трогали.
   const pendingValue = override?.value;
   const effectiveUrl = override?.url ?? cell.url;
+  const roUrlOverride = override?.roUrl;
+
 
   // Резолвим живое значение из РО. Для сравнения передаём то, что
   // «портал хочет отправить»: правку пользователя либо статику таблицы.
@@ -138,12 +140,14 @@ export function CellCard({
   const [editing, setEditing] = useState(false);
   const [editPrice, setEditPrice] = useState<string>("");
   const [editUrl, setEditUrl] = useState<string>("");
+  const [editRoUrl, setEditRoUrl] = useState<string>("");
   const priceRef = useRef<HTMLInputElement>(null);
 
   const openEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     setEditPrice(effectiveValue !== null ? String(effectiveValue) : "");
     setEditUrl(effectiveUrl ?? "");
+    setEditRoUrl(roUrlOverride ?? "");
     setEditing(true);
   };
 
@@ -156,6 +160,7 @@ export function CellCard({
     overrideCell(cell.address, {
       value: finalVal,
       url: editUrl.trim() || undefined,
+      roUrl: editRoUrl.trim() || undefined,
     });
     if (isMarkup && finalVal !== null) {
       onMarkupChange?.(finalVal);
@@ -261,13 +266,14 @@ export function CellCard({
       (partProductId ? Number(partProductId) : null) ??
       (roResolved ? ro.roId : null))
     : null;
-  const roDeepLink = isServiceCell
+  const autoRoDeepLink = isServiceCell
     ? serviceRoId != null
       ? `https://web.roapp.io/company/services-pricelist/${serviceRoId}`
       : null
     : isPartCell && partRoId != null
       ? `https://web.roapp.io/warehouse/residue/${partRoId}`
       : null;
+  const roDeepLink = roUrlOverride?.trim() || autoRoDeepLink;
 
   const handleRequestStock = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -306,9 +312,17 @@ export function CellCard({
   return (
     <div className={styles}>
       {/* ── Шапка ── */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onSelect?.(cell)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect?.(cell);
+          }
+        }}
         className="w-full text-left"
       >
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
@@ -383,7 +397,7 @@ export function CellCard({
             )}
           </div>
         )}
-      </button>
+      </div>
 
       {/* ── Inline-форма редактирования ── */}
       {editing && (
@@ -410,6 +424,18 @@ export function CellCard({
                 value={editUrl}
                 onChange={(e) => setEditUrl(e.target.value)}
                 placeholder="https://..."
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-foreground/50 focus:ring-1 focus:ring-foreground/20"
+              />
+            </div>
+          )}
+          {isPurchaseCell && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-muted-foreground">Ссылка на запчасть в РО</label>
+              <input
+                type="url"
+                value={editRoUrl}
+                onChange={(e) => setEditRoUrl(e.target.value)}
+                placeholder="https://web.roapp.io/warehouse/residue/..."
                 className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[11px] outline-none focus:border-foreground/50 focus:ring-1 focus:ring-foreground/20"
               />
             </div>
