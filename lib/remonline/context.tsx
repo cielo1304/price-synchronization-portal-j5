@@ -108,13 +108,19 @@ type CtxValue = {
    * Используется для inline-редактирования source-ячеек и наценки.
    * Изменения живут только в памяти — никуда не записываются автоматически.
    */
-  overrideCell: (address: string, patch: { value?: number | null; url?: string }) => void;
+  overrideCell: (
+    address: string,
+    patch: { value?: number | null; url?: string; roUrl?: string },
+  ) => void;
 
   /**
    * Читать локальные переопределения ячеек.
    * source-ячейки и наценка могут иметь исправленное значение.
    */
-  cellOverrides: Map<string, { value?: number | null; url?: string }>;
+  cellOverrides: Map<
+    string,
+    { value?: number | null; url?: string; roUrl?: string }
+  >;
 
   /**
    * Убрать локальное переопределение ячейки (например после успешной
@@ -314,7 +320,7 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
 
   // Локальные переопределения ячеек (value, url) — только в памяти сессии.
   const [cellOverrides, setCellOverrides] = useState<
-    Map<string, { value?: number | null; url?: string }>
+    Map<string, { value?: number | null; url?: string; roUrl?: string }>
   >(() => new Map());
 
   // Вручную добавленные source-ячейки (поставщики).
@@ -323,7 +329,10 @@ export function RemonlineProvider({ children }: { children: React.ReactNode }) {
   >(() => new Map());
 
   const overrideCell = useCallback(
-    (address: string, patch: { value?: number | null; url?: string }) => {
+    (
+      address: string,
+      patch: { value?: number | null; url?: string; roUrl?: string },
+    ) => {
       setCellOverrides((prev) => {
         const next = new Map(prev);
         const existing = next.get(address) ?? {};
