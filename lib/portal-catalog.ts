@@ -491,11 +491,18 @@ function recordToPosition(rec: RawSource): Position {
   }
 
   // 4) Финальная цена
+  const finalPurchaseAddress = `${id}.part.purchase_price`;
+  const finalLaborAddress = `${id}.labor.price`;
+  const finalDependsOn = hasPart
+    ? [`${id}.part.retail_price`, finalLaborAddress]
+    : partExempt
+      ? [finalLaborAddress]
+      : [finalPurchaseAddress, finalLaborAddress];
   const finalPrice = rec.finalPrice ?? laborPrice + (hasPart ? (part?.retailRO ?? 0) : 0);
   stages.push({
     id: "final",
     title: "Конечная цена",
-    subtitle: hasPart ? "Запчасть + работа" : "Только работа",
+    subtitle: hasPart ? "Запчасть + работа" : partExempt ? "Только работа" : "Запчасть + работа",
     cells: [
       {
         address: `${id}.service.final_price`,
@@ -503,12 +510,12 @@ function recordToPosition(rec: RawSource): Position {
         kind: "formula",
         value: finalPrice,
         unit: "₽",
-        formula: hasPart
-          ? "part.retail_price + labor.price"
+        formula: hasPart || !partExempt
+          ? hasPart
+            ? "part.retail_price + labor.price"
+            : "part.purchase_price + labor.price"
           : "labor.price",
-        dependsOn: hasPart
-          ? [`${id}.part.retail_price`, `${id}.labor.price`]
-          : [`${id}.labor.price`],
+        dependsOn: finalDependsOn,
         sheetRef: rec.priceListSheetRef,
         note: `В Google Sheets: ${rec.priceListSheetRef} (формула F)`,
         isFinal: true,
@@ -872,7 +879,7 @@ function buildBlankPosition(
           kind: "manual",
           value: null,
           unit: "%",
-          source: "Введите вручную",
+          source: "Введите вручну��",
           note: "Например, 15 — это +15% к закупке",
         },
       ],
