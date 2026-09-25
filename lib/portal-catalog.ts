@@ -498,7 +498,7 @@ function recordToPosition(rec: RawSource): Position {
     : partExempt
       ? [finalLaborAddress]
       : [finalPurchaseAddress, finalLaborAddress];
-  const finalPrice = rec.finalPrice ?? laborPrice + (hasPart ? (part?.retailRO ?? 0) : 0);
+  const finalPrice = laborPrice + (hasPart ? (part?.retailRO ?? 0) : !partExempt ? (part?.purchaseRO ?? 0) : 0);
   stages.push({
     id: "final",
     title: "Конечная цена",
@@ -997,11 +997,15 @@ function buildBlankPosition(
         kind: "formula",
         value: null,
         unit: "₽",
-        formula: hasPart
-          ? "part.retail_price + labor.price"
+        formula: hasPart || !partExempt
+          ? hasPart
+            ? "part.retail_price + labor.price"
+            : "part.purchase_price + labor.price"
           : "labor.price",
-        dependsOn: hasPart
-          ? [`${id}.part.retail_price`, `${id}.labor.price`]
+        dependsOn: hasPart || !partExempt
+          ? hasPart
+            ? [`${id}.part.retail_price`, `${id}.labor.price`]
+            : [`${id}.part.purchase_price`, `${id}.labor.price`]
           : [`${id}.labor.price`],
         note: "Заполнится после ввода всех данных выше",
         isFinal: true,

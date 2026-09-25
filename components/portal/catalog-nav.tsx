@@ -9,6 +9,8 @@ import {
   Sparkles,
   CircleAlert,
   LayoutList,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import type { PositionStub } from "@/lib/portal-types";
 import { groupCatalog } from "@/lib/portal-catalog";
@@ -21,21 +23,38 @@ import {
 import { AddModelDialog } from "./add-model-dialog";
 import { DeviceServicesModal } from "./device-services-modal";
 import { useRemonline } from "@/lib/remonline/context";
+import {
+  hidePosition,
+  restorePosition,
+  useHiddenPositionIds,
+} from "@/lib/portal-custom-models";
 import { cn } from "@/lib/utils";
 
 type Props = {
   positions: PositionStub[];
+  allPositions: PositionStub[];
   selectedId: string;
   onSelect: (id: string) => void;
 };
 
-export function CatalogNav({ positions, selectedId, onSelect }: Props) {
+export function CatalogNav({
+  positions,
+  allPositions,
+  selectedId,
+  onSelect,
+}: Props) {
   const [addOpen, setAddOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openDevice, setOpenDevice] = useState<string | null>(null);
   const { conflictByDevice } = useRemonline();
+  const hiddenPositionIds = useHiddenPositionIds();
+  const hiddenPositions = useMemo(
+    () =>
+      allPositions.filter((position) => hiddenPositionIds.includes(position.id)),
+    [allPositions, hiddenPositionIds],
+  );
 
   const visible = useMemo(() => {
     const afterFilters = applyFilters(positions, filters);
@@ -208,12 +227,12 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                                     : p.variant || p.category;
                                   const sub = onlyOne ? p.variant : null;
                                   return (
-                                    <li key={p.id}>
+                                    <li key={p.id} className="flex items-center gap-1">
                                       <button
                                         type="button"
                                         onClick={() => onSelect(p.id)}
                                         className={cn(
-                                          "group flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition",
+                                          "group flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition",
                                           isActive
                                             ? "bg-foreground text-background"
                                             : "text-foreground/90 hover:bg-muted/60",
@@ -253,6 +272,19 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
                                             : "—"}
                                         </span>
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm(`Удалить позицию «${p.device} · ${p.category}»?`)) {
+                                            hidePosition(p.id);
+                                          }
+                                        }}
+                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-500"
+                                        aria-label={`Удалить ${p.device} ${p.category}`}
+                                        title="Удалить позицию"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
                                     </li>
                                   );
                                 })}
@@ -268,6 +300,32 @@ export function CatalogNav({ positions, selectedId, onSelect }: Props) {
             })}
           </ul>
         </nav>
+
+        {hiddenPositions.length > 0 && (
+          <details className="rounded-lg border border-border bg-background/60">
+            <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+              Скрытые позиции · {hiddenPositions.length}
+            </summary>
+            <div className="border-t border-border px-2 py-1">
+              {hiddenPositions.map((position) => (
+                <div key={position.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span className="min-w-0 truncate text-[11px] text-muted-foreground" title={`${position.device} · ${position.category}`}>
+                    {position.device} · {position.category}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => restorePosition(position.id)}
+                    className="flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="Восстановить позицию"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Вернуть
+                  </button>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
 
         <div className="mt-1 rounded-lg border border-dashed border-border px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
           {visible.length.toLocaleString("ru-RU")} из{" "}
