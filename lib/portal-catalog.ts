@@ -172,6 +172,15 @@ function recordToStub(rec: RawSource): PositionStub {
     rec.labor.price === null ||
     (rec.formula?.includes("БД_ЗАПЧАСТИ") &&
       (!rec.part || rec.part.purchase === null));
+  const hasPart = !!rec.part;
+  const partExempt = isPartExempt(rec.service, category);
+  const finalPrice =
+    (rec.labor?.price ?? 0) +
+    (hasPart
+      ? (rec.part?.retailRO ?? 0)
+      : partExempt
+        ? 0
+        : (rec.part?.purchaseRO ?? 0));
 
   return {
     id: makeId(rec),
@@ -180,7 +189,7 @@ function recordToStub(rec: RawSource): PositionStub {
     category,
     variant,
     code: rec.code,
-    finalPrice: rec.finalPrice,
+    finalPrice,
     warranty: rec.warrantyDays ? `${rec.warrantyDays} дней` : "—",
     draft: isDraft,
     // Ключи для матчинга с Remonline. Имя услуги/запчасти из исходных данных
